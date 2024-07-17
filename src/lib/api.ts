@@ -1,28 +1,26 @@
 import { supabase } from './supabase';
 import { Account } from '@/types/accounts';
 
-export async function fetchAccounts(): Promise<Account[]> {
-  console.log("Fetching accounts from Supabase...");
+
+export async function fetchAccounts(userId: string): Promise<Account[]> {
   const { data, error } = await supabase
     .from('accounts')
     .select('*')
+    .eq('user_id', userId)
     .order('id');
-
-  console.log("Supabase response:", { data, error });
 
   if (error) {
     console.error('Error fetching accounts:', error);
     throw error;
   }
 
-  console.log("Fetched accounts:", data);
   return data as Account[];
 }
 
-export async function addAccount(account: Omit<Account, 'id'>): Promise<Account> {
+export async function addAccount(account: Omit<Account, 'id'>, userId: string): Promise<Account> {
   const { data, error } = await supabase
     .from('accounts')
-    .insert(account)
+    .insert({ ...account, user_id: userId })
     .single();
 
   if (error) {

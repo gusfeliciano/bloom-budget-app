@@ -5,6 +5,7 @@ import AccountCard from './AccountCard';
 import { Account } from '@/types/accounts';
 import AddSubAccountModal from './AddSubAccountModal';
 import { fetchAccounts, addAccount, updateAccount, deleteAccount } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Temporary mock data
 const initialAccounts: Account[] = [
@@ -33,30 +34,26 @@ const initialAccounts: Account[] = [
 ];
 
 export default function AccountsList() {
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
-  
-    useEffect(() => {
-      loadAccounts();
-    }, []);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  const { user, loading } = useAuth();
 
-    async function loadAccounts() {
-        try {
-          const fetchedAccounts = await fetchAccounts();
-          if (fetchedAccounts && fetchedAccounts.length > 0) {
-            const structuredAccounts = structureAccounts(fetchedAccounts);
-            setAccounts(structuredAccounts);
-          } else {
-            console.log("No accounts fetched from Supabase, using initial accounts data");
-            setAccounts(initialAccounts);
-          }
-        } catch (error) {
-          console.error('Failed to fetch accounts:', error);
-          console.log("Error occurred, using initial accounts data");
-          setAccounts(initialAccounts);
-        }
-      }
+  useEffect(() => {
+    if (user) {
+      loadAccounts();
+    }
+  }, [user]);
+
+  async function loadAccounts() {
+    try {
+      const fetchedAccounts = await fetchAccounts(user!.id);
+      const structuredAccounts = structureAccounts(fetchedAccounts);
+      setAccounts(structuredAccounts);
+    } catch (error) {
+      console.error('Failed to fetch accounts:', error);
+    }
+  }
     
       function structureAccounts(flatAccounts: Account[]): Account[] {
         const accountMap = new Map<number, Account>();
@@ -87,8 +84,12 @@ export default function AccountsList() {
     };
   
     const addSubAccount = async (subAccount: Omit<Account, 'id'>) => {
+      if (!user) {
+        console.error('User not authenticated');
+        return;
+      }
       try {
-        const newSubAccount = await addAccount({ ...subAccount, parent_id: selectedParentId! });
+        const newSubAccount = await addAccount({ ...subAccount, parent_id: selectedParentId! }, user.id);
         setAccounts(prevAccounts => {
           return prevAccounts.map(account => {
             if (account.id === selectedParentId) {
