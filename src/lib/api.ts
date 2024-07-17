@@ -8,6 +8,8 @@ export async function fetchAccounts(): Promise<Account[]> {
     .select('*')
     .order('id');
 
+  console.log("Supabase response:", { data, error });
+
   if (error) {
     console.error('Error fetching accounts:', error);
     throw error;
