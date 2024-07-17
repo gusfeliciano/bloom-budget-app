@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AccountCard from './AccountCard';
 import { Account } from '@/types/accounts';
 import AddSubAccountModal from './AddSubAccountModal';
+import { fetchAccounts, addAccount, updateAccount, deleteAccount } from '@/lib/api';
 
 // Temporary mock data
 const initialAccounts: Account[] = [
@@ -11,7 +12,7 @@ const initialAccounts: Account[] = [
     id: 1,
     name: "Cash",
     type: "Asset",
-    balance: 160495.28,
+    balance: 0.28,
     subAccounts: [
       { id: 11, name: "Checking", type: "Cash", balance: 130357.28 },
       { id: 12, name: "Savings", type: "Cash", balance: 30138.00 },
@@ -21,7 +22,7 @@ const initialAccounts: Account[] = [
     id: 2,
     name: "Investments",
     type: "Asset",
-    balance: 390000.00,
+    balance: 0.00,
     subAccounts: [
       { id: 21, name: "401k", type: "Investments", balance: 180000.00 },
       { id: 22, name: "IRA", type: "Investments", balance: 200000.00 },
@@ -32,32 +33,80 @@ const initialAccounts: Account[] = [
 ];
 
 export default function AccountsList() {
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  
+    useEffect(() => {
+      loadAccounts();
+    }, []);
 
-  const handleAddSubAccount = (parentId: number) => {
-    setSelectedParentId(parentId);
-    setIsModalOpen(true);
-  };
-
-  const addSubAccount = (subAccount: Omit<Account, 'id'>) => {
-    setAccounts(prevAccounts => {
-      return prevAccounts.map(account => {
-        if (account.id === selectedParentId) {
-          return {
-            ...account,
-            subAccounts: [
-              ...(account.subAccounts || []),
-              { ...subAccount, id: Date.now() } // Use a proper ID generation method in production
-            ]
-          };
+    async function loadAccounts() {
+        try {
+          const fetchedAccounts = await fetchAccounts();
+          if (fetchedAccounts && fetchedAccounts.length > 0) {
+            const structuredAccounts = structureAccounts(fetchedAccounts);
+            setAccounts(structuredAccounts);
+          } else {
+            console.log("No accounts fetched from Supabase, using initial accounts data");
+            setAccounts(initialAccounts);
+          }
+        } catch (error) {
+          console.error('Failed to fetch accounts:', error);
+          console.log("Error occurred, using initial accounts data");
+          setAccounts(initialAccounts);
         }
-        return account;
-      });
-    });
-    setIsModalOpen(false);
-  };
+      }
+    
+      function structureAccounts(flatAccounts: Account[]): Account[] {
+        const accountMap = new Map<number, Account>();
+        const topLevelAccounts: Account[] = [];
+    
+        flatAccounts.forEach(account => {
+          account.subAccounts = [];
+          accountMap.set(account.id, account);
+        });
+    
+        flatAccounts.forEach(account => {
+          if (account.parent_id) {
+            const parentAccount = accountMap.get(account.parent_id);
+            if (parentAccount) {
+              parentAccount.subAccounts?.push(account);
+            }
+          } else {
+            topLevelAccounts.push(account);
+          }
+        });
+    
+        return topLevelAccounts;
+      }
+  
+    const handleAddSubAccount = (parentId: number) => {
+      setSelectedParentId(parentId);
+      setIsModalOpen(true);
+    };
+  
+    const addSubAccount = async (subAccount: Omit<Account, 'id'>) => {
+      try {
+        const newSubAccount = await addAccount({ ...subAccount, parent_id: selectedParentId! });
+        setAccounts(prevAccounts => {
+          return prevAccounts.map(account => {
+            if (account.id === selectedParentId) {
+              return {
+                ...account,
+                subAccounts: [...(account.subAccounts || []), newSubAccount]
+              };
+            }
+            return account;
+          });
+        });
+        setIsModalOpen(false);
+      } catch (error) {
+        console.error('Failed to add sub-account:', error);
+      }
+    };
+
+  console.log("Current accounts state:", accounts);
 
   return (
     <div className="space-y-4">
