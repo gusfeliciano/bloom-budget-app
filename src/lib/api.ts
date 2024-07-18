@@ -101,3 +101,89 @@ export async function updateUserAccount(id: number, updates: Partial<Account>): 
     return null;
   }
 }
+
+export interface Transaction {
+  id: number;
+  user_id: string;
+  account_id: number;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  type: 'income' | 'expense';
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchTransactions(userId: string): Promise<Transaction[]> {
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    toast.error('Failed to fetch transactions. Please try again.');
+    return [];
+  }
+}
+
+export async function createTransaction(
+  userId: string,
+  transaction: Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+): Promise<Transaction | null> {
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert({ ...transaction, user_id: userId })
+      .single();
+
+    if (error) throw error;
+    toast.success('Transaction added successfully!');
+    return data;
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    toast.error('Failed to add transaction. Please try again.');
+    return null;
+  }
+}
+
+export async function updateTransaction(
+  id: number,
+  updates: Partial<Omit<Transaction, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+): Promise<Transaction | null> {
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    toast.success('Transaction updated successfully!');
+    return data;
+  } catch (error) {
+    console.error('Error updating transaction:', error);
+    toast.error('Failed to update transaction. Please try again.');
+    return null;
+  }
+}
+
+export async function deleteTransaction(id: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    toast.success('Transaction deleted successfully!');
+  } catch (error) {
+    console.error('Error deleting transaction:', error);
+    toast.error('Failed to delete transaction. Please try again.');
+  }
+}
