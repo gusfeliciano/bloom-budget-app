@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchTransactions, Transaction, fetchUserAccounts } from '@/lib/api';
+import { fetchTransactions, Transaction, fetchUserAccounts, fetchCategories, TransactionCategory } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import AddTransactionForm from '@/components/transactions/AddTransactionForm';
 import TransactionItem from '@/components/transactions/TransactionItem';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Account } from '@/types/accounts';
 
 export default function TransactionsPage() {
@@ -17,22 +18,27 @@ export default function TransactionsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<TransactionCategory[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (user) {
       loadTransactions();
       loadAccounts();
+      loadCategories();
     }
-  }, [user]);
+  }, [user, currentPage]);
 
   async function loadTransactions() {
     if (!user) return;
     setIsLoading(true);
     try {
-      const fetchedTransactions = await fetchTransactions(user.id);
+      const { transactions: fetchedTransactions, total } = await fetchTransactions(user.id, currentPage);
       setTransactions(fetchedTransactions);
+      setTotalPages(Math.ceil(total / 10)); // Assuming 10 items per page
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
     } finally {
@@ -50,6 +56,16 @@ export default function TransactionsPage() {
     }
   }
 
+  async function loadCategories() {
+    if (!user) return;
+    try {
+      const fetchedCategories = await fetchCategories(user.id);
+      setCategories(fetchedCategories);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  }
+
   const handleTransactionAdded = () => {
     loadTransactions();
   };
@@ -62,21 +78,21 @@ export default function TransactionsPage() {
     loadTransactions();
   };
 
-  const filteredAndSortedTransactions = transactions
-    .filter(transaction => {
-      if (filterType !== 'all' && transaction.type !== filterType) return false;
-      if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'date') {
-        return sortOrder === 'asc' 
-          ? new Date(a.date).getTime() - new Date(b.date).getTime()
-          : new Date(b.date).getTime() - new Date(a.date).getTime();
-      } else {
-        return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount;
-      }
-    });
+  const filteredTransactions = transactions.filter(transaction => {
+    if (filterType !== 'all' && transaction.type !== filterType) return false;
+    if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    return true;
+  });
+
+  const sortedTransactions = filteredTransactions.sort((a, b) => {
+    if (sortBy === 'date') {
+      return sortOrder === 'asc' 
+        ? new Date(a.date).getTime() - new Date(b.date).getTime()
+        : new Date(b.date).getTime() - new Date(a.date).getTime();
+    } else {
+      return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount;
+    }
+  });
 
   if (isLoading) {
     return (
@@ -90,7 +106,7 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Transactions</h1>
-      <AddTransactionForm onTransactionAdded={handleTransactionAdded} accounts={accounts} />
+      <AddTransactionForm onTransactionAdded={handleTransactionAdded} accounts={accounts} categories={categories} />
       <div className="flex space-x-4">
         <Select onValueChange={(value: 'date' | 'amount') => setSortBy(value)} defaultValue={sortBy}>
           <SelectTrigger>
@@ -126,20 +142,30 @@ export default function TransactionsPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
-      {filteredAndSortedTransactions.length === 0 ? (
+      {sortedTransactions.length === 0 ? (
         <p>No transactions found. Add a new transaction to get started.</p>
       ) : (
         <ul className="space-y-2">
-          {filteredAndSortedTransactions.map((transaction) => (
+          {sortedTransactions.map((transaction) => (
             <TransactionItem 
               key={transaction.id} 
               transaction={transaction} 
               onTransactionUpdated={handleTransactionUpdated}
               onTransactionDeleted={handleTransactionDeleted}
+              categories={categories}
             />
           ))}
         </ul>
       )}
+      <div className="flex justify-between items-center">
+        <Button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>
+          Previous
+        </Button>
+        <span>Page {currentPage} of {totalPages}</span>
+        <Button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

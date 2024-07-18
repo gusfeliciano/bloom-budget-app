@@ -106,29 +106,40 @@ export interface Transaction {
   id: number;
   user_id: string;
   account_id: number;
+  category_id: number;
   date: string;
   description: string;
   amount: number;
-  category: string;
   type: 'income' | 'expense';
   created_at: string;
   updated_at: string;
 }
 
-export async function fetchTransactions(userId: string): Promise<Transaction[]> {
+export interface TransactionCategory {
+  id: number;
+  name: string;
+  user_id: string;
+}
+
+export async function fetchTransactions(
+  userId: string, 
+  page: number = 1, 
+  pageSize: number = 10
+): Promise<{ transactions: Transaction[], total: number }> {
   try {
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('transactions')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', userId)
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .range((page - 1) * pageSize, page * pageSize - 1);
 
     if (error) throw error;
-    return data || [];
+    return { transactions: data || [], total: count || 0 };
   } catch (error) {
     console.error('Error fetching transactions:', error);
     toast.error('Failed to fetch transactions. Please try again.');
-    return [];
+    return { transactions: [], total: 0 };
   }
 }
 
@@ -185,5 +196,38 @@ export async function deleteTransaction(id: number): Promise<void> {
   } catch (error) {
     console.error('Error deleting transaction:', error);
     toast.error('Failed to delete transaction. Please try again.');
+  }
+}
+
+export async function fetchCategories(userId: string): Promise<TransactionCategory[]> {
+  try {
+    const { data, error } = await supabase
+      .from('transaction_categories')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    toast.error('Failed to fetch categories. Please try again.');
+    return [];
+  }
+}
+
+export async function createCategory(userId: string, name: string): Promise<TransactionCategory | null> {
+  try {
+    const { data, error } = await supabase
+      .from('transaction_categories')
+      .insert({ user_id: userId, name })
+      .single();
+
+    if (error) throw error;
+    toast.success('Category created successfully!');
+    return data;
+  } catch (error) {
+    console.error('Error creating category:', error);
+    toast.error('Failed to create category. Please try again.');
+    return null;
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Transaction, updateTransaction, deleteTransaction } from '@/lib/api';
+import { Transaction, updateTransaction, deleteTransaction, TransactionCategory } from '@/lib/api';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,13 +9,16 @@ import { Pencil, Trash2, X, Check } from 'lucide-react';
 
 interface TransactionItemProps {
   transaction: Transaction;
+  categories: TransactionCategory[];
   onTransactionUpdated: () => void;
   onTransactionDeleted: () => void;
 }
 
-export default function TransactionItem({ transaction, onTransactionUpdated, onTransactionDeleted }: TransactionItemProps) {
+export default function TransactionItem({ transaction, categories, onTransactionUpdated, onTransactionDeleted }: TransactionItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTransaction, setEditedTransaction] = useState(transaction);
+
+  const category = categories.find(c => c.id === transaction.category_id);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -60,10 +63,21 @@ export default function TransactionItem({ transaction, onTransactionUpdated, onT
           value={editedTransaction.amount}
           onChange={(e) => setEditedTransaction({ ...editedTransaction, amount: parseFloat(e.target.value) })}
         />
-        <Input
-          value={editedTransaction.category}
-          onChange={(e) => setEditedTransaction({ ...editedTransaction, category: e.target.value })}
-        />
+        <Select
+          onValueChange={(value) => setEditedTransaction({ ...editedTransaction, category_id: parseInt(value) })}
+          defaultValue={editedTransaction.category_id.toString()}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id.toString()}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select
           onValueChange={(value: 'income' | 'expense') => setEditedTransaction({ ...editedTransaction, type: value })}
           defaultValue={editedTransaction.type}
@@ -104,7 +118,7 @@ export default function TransactionItem({ transaction, onTransactionUpdated, onT
       <div className="text-sm text-gray-500">
         <span>{new Date(transaction.date).toLocaleDateString()}</span>
         <span className="mx-2">•</span>
-        <span>{transaction.category}</span>
+        <span>{category ? category.name : 'Uncategorized'}</span>
       </div>
     </li>
   );

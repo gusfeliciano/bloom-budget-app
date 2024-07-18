@@ -2,56 +2,56 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { createTransaction } from '@/lib/api';
+import { createTransaction, TransactionCategory } from '@/lib/api';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Account } from '@/types/accounts';
 
-
 interface AddTransactionFormProps {
-    onTransactionAdded: () => void;
-    accounts: Account[];
-  }
+  onTransactionAdded: () => void;
+  accounts: Account[];
+  categories: TransactionCategory[];
+}
 
-  export default function AddTransactionForm({ onTransactionAdded, accounts }: AddTransactionFormProps) {
-    const [description, setDescription] = useState('');
-    const [amount, setAmount] = useState('');
-    const [category, setCategory] = useState('');
-    const [type, setType] = useState<'income' | 'expense'>('expense');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [accountId, setAccountId] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const { user } = useAuth();
-  
-    const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!user || !accountId) return;
-  
-      setIsLoading(true);
-      try {
-        await createTransaction(user.id, {
-          account_id: parseInt(accountId),
-          description,
-          amount: parseFloat(amount),
-          category,
-          type,
-          date,
-        });
-        onTransactionAdded();
-        setDescription('');
-        setAmount('');
-        setCategory('');
-        setType('expense');
-        setDate(new Date().toISOString().split('T')[0]);
-        setAccountId('');
-      } catch (error) {
-        console.error('Failed to add transaction:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+export default function AddTransactionForm({ onTransactionAdded, accounts, categories }: AddTransactionFormProps) {
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [accountId, setAccountId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !accountId || !categoryId) return;
+
+    setIsLoading(true);
+    try {
+      await createTransaction(user.id, {
+        account_id: parseInt(accountId),
+        description,
+        amount: parseFloat(amount),
+        category_id: parseInt(categoryId),
+        type,
+        date,
+      });
+      onTransactionAdded();
+      setDescription('');
+      setAmount('');
+      setCategoryId('');
+      setType('expense');
+      setDate(new Date().toISOString().split('T')[0]);
+      setAccountId('');
+    } catch (error) {
+      console.error('Failed to add transaction:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -77,12 +77,18 @@ interface AddTransactionFormProps {
       </div>
       <div>
         <Label htmlFor="category">Category</Label>
-        <Input
-          id="category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          required
-        />
+        <Select onValueChange={setCategoryId} value={categoryId}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id.toString()}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div>
         <Label htmlFor="type">Type</Label>
@@ -121,7 +127,7 @@ interface AddTransactionFormProps {
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit" disabled={isLoading || !accountId}>
+      <Button type="submit" disabled={isLoading || !accountId || !categoryId}>
         {isLoading ? 'Adding...' : 'Add Transaction'}
       </Button>
     </form>
