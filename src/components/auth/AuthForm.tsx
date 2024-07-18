@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from "@/components/ui/button";
@@ -11,27 +9,34 @@ export default function AuthForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) setMessage(error.message);
-    else setMessage('Check your email for the confirmation link!');
-    setLoading(false);
-  };
+    setMessage('');
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMessage(error.message);
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) setMessage(error.message);
+      else setMessage('Check your email for the confirmation link!');
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setMessage(error.message);
+    }
+
     setLoading(false);
   };
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSignUp} className="space-y-2">
+      <form onSubmit={handleAuth} className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
@@ -48,10 +53,14 @@ export default function AuthForm() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <Button type="submit" disabled={loading}>Sign Up</Button>
+        <Button type="submit" disabled={loading}>
+          {isSignUp ? 'Sign Up' : 'Sign In'}
+        </Button>
       </form>
-      <Button onClick={handleSignIn} disabled={loading}>Sign In</Button>
-      {message && <p>{message}</p>}
+      <Button onClick={() => setIsSignUp(!isSignUp)} variant="outline">
+        {isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+      </Button>
+      {message && <p className="text-red-500">{message}</p>}
     </div>
   );
 }
