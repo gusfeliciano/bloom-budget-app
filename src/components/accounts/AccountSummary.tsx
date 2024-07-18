@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchUserAccounts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Account } from '@/types/accounts';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AccountSummary({ refreshTrigger }: { refreshTrigger: number }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -18,15 +20,33 @@ export default function AccountSummary({ refreshTrigger }: { refreshTrigger: num
 
   async function loadAccounts() {
     if (!user) return;
+    setIsLoading(true);
     try {
       const fetchedAccounts = await fetchUserAccounts(user.id);
       setAccounts(fetchedAccounts);
     } catch (error) {
       console.error('Failed to fetch accounts:', error);
+    } finally {
+      setIsLoading(false);
     }
   }
-
+ 
   const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Account Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-full mb-2" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>

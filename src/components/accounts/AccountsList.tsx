@@ -5,9 +5,11 @@ import AccountCard from './AccountCard';
 import { Account } from '@/types/accounts';
 import { fetchUserAccounts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AccountsList({ refreshTrigger, onAccountsChanged }: { refreshTrigger: number, onAccountsChanged: () => void }) {
   const [accountsByType, setAccountsByType] = useState<Record<string, Account[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -18,10 +20,9 @@ export default function AccountsList({ refreshTrigger, onAccountsChanged }: { re
 
   async function loadAccounts() {
     if (!user) return;
+    setIsLoading(true);
     try {
-      console.log('Loading accounts...');
       const fetchedAccounts = await fetchUserAccounts(user.id);
-      console.log('Fetched accounts:', fetchedAccounts);
       const grouped = fetchedAccounts.reduce((acc, account) => {
         if (!acc[account.type]) {
           acc[account.type] = [];
@@ -30,17 +31,22 @@ export default function AccountsList({ refreshTrigger, onAccountsChanged }: { re
         return acc;
       }, {} as Record<string, Account[]>);
       setAccountsByType(grouped);
-      console.log('Grouped accounts:', grouped);
     } catch (error) {
       console.error('Failed to fetch accounts:', error);
+    } finally {
+      setIsLoading(false);
     }
   }
 
-  const handleAccountChange = () => {
-    console.log('Account changed, triggering refresh');
-    onAccountsChanged();
-    loadAccounts();
-  };
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-[100px] w-full" />
+        <Skeleton className="h-[100px] w-full" />
+        <Skeleton className="h-[100px] w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -49,7 +55,7 @@ export default function AccountsList({ refreshTrigger, onAccountsChanged }: { re
           key={type}
           type={type}
           accounts={accounts}
-          onAccountsChanged={handleAccountChange}
+          onAccountsChanged={onAccountsChanged}
         />
       ))}
     </div>

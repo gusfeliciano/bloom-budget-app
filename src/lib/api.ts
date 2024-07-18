@@ -1,44 +1,42 @@
+import { toast } from 'react-hot-toast';
 import { supabase } from './supabase';
 import { Account } from '@/types/accounts';
 
 export async function fetchUserAccounts(userId: string): Promise<Account[]> {
-  console.log('Fetching accounts for user:', userId);
-  const { data, error } = await supabase
-    .from('user_accounts')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at');
+  try {
+    const { data, error } = await supabase
+      .from('user_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at');
 
-  if (error) {
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
     console.error('Error fetching accounts:', error);
-    throw error;
+    toast.error('Failed to fetch accounts. Please try again.');
+    return [];
   }
-
-  console.log('Fetched accounts:', data);
-  return data || [];
 }
 
 export async function createUserAccount(
   userId: string, 
   account: Pick<Account, 'name' | 'type' | 'balance'>
-): Promise<Account> {
-  console.log('Creating account for user:', userId, 'Account details:', account);
-  const { data, error } = await supabase
-    .from('user_accounts')
-    .insert({ 
-      ...account, 
-      user_id: userId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .single();
+): Promise<Account | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_accounts')
+      .insert({ ...account, user_id: userId })
+      .single();
 
-  if (error) {
-    console.error('Detailed error:', error);
-    throw error;
+    if (error) throw error;
+    toast.success('Account created successfully!');
+    return data;
+  } catch (error) {
+    console.error('Error creating account:', error);
+    toast.error('Failed to create account. Please try again.');
+    return null;
   }
-
-  return data;
 }
 
 export async function updateAccount(account: Account): Promise<Account> {
@@ -71,31 +69,35 @@ export async function deleteAccount(id: number): Promise<void> {
   }
 }
 
-export async function deleteUserAccount(id: number): Promise<number> {
-  const { error } = await supabase
-    .from('user_accounts')
-    .delete()
-    .eq('id', id);
+export async function deleteUserAccount(id: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('user_accounts')
+      .delete()
+      .eq('id', id);
 
-  if (error) {
+    if (error) throw error;
+    toast.success('Account deleted successfully!');
+  } catch (error) {
     console.error('Error deleting account:', error);
-    throw error;
+    toast.error('Failed to delete account. Please try again.');
   }
-  console.log('Account deleted successfully');
-  return id;
 }
 
-export async function updateUserAccount(id: number, updates: Partial<Account>): Promise<Account> {
-  const { data, error } = await supabase
-    .from('user_accounts')
-    .update(updates)
-    .eq('id', id)
-    .single();
+export async function updateUserAccount(id: number, updates: Partial<Account>): Promise<Account | null> {
+  try {
+    const { data, error } = await supabase
+      .from('user_accounts')
+      .update(updates)
+      .eq('id', id)
+      .single();
 
-  if (error) {
+    if (error) throw error;
+    toast.success('Account updated successfully!');
+    return data;
+  } catch (error) {
     console.error('Error updating account:', error);
-    throw error;
+    toast.error('Failed to update account. Please try again.');
+    return null;
   }
-
-  return data;
 }

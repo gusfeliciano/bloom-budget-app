@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,30 +25,45 @@ export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () 
   const [accountName, setAccountName] = useState('');
   const [accountType, setAccountType] = useState(accountTypes[0]);
   const [balance, setBalance] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      console.error('User not authenticated');
+      toast.error('User not authenticated');
       return;
     }
-    console.log('Authenticated user:', user);
+    
+    // Validation
+    if (accountName.trim().length === 0) {
+      toast.error('Account name cannot be empty');
+      return;
+    }
+    
+    const balanceNum = parseFloat(balance);
+    if (isNaN(balanceNum) || balanceNum < 0) {
+      toast.error('Balance must be a non-negative number');
+      return;
+    }
+
+    setIsLoading(true);
     try {
       await createUserAccount(user.id, {
-        name: accountName,
+        name: accountName.trim(),
         type: accountType,
-        balance: parseFloat(balance),
+        balance: balanceNum,
       });
       // Reset form and notify parent
       setAccountName('');
-      setAccountType('');
+      setAccountType(accountTypes[0]);
       setBalance('');
       setIsExpanded(false);
-      console.log('Account added successfully, calling onAccountAdded');
       onAccountAdded();
     } catch (error) {
       console.error('Failed to add account:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
