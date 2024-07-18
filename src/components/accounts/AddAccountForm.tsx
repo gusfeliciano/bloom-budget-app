@@ -8,11 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { createUserAccount } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+const accountTypes = [
+  "Checking",
+  "Savings",
+  "Credit Card",
+  "Investment",
+  "Loan",
+  "Other"
+];
 
 export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () => void }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [accountName, setAccountName] = useState('');
-  const [accountType, setAccountType] = useState('');
+  const [accountType, setAccountType] = useState(accountTypes[0]);
   const [balance, setBalance] = useState('');
   const { user } = useAuth();
 
@@ -66,12 +76,18 @@ export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () 
             </div>
             <div>
               <Label htmlFor="accountType">Account Type</Label>
-              <Input
-                id="accountType"
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value)}
-                required
-              />
+              <Select onValueChange={setAccountType} defaultValue={accountType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select account type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="balance">Initial Balance</Label>

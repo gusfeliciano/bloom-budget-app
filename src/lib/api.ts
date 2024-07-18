@@ -70,3 +70,32 @@ export async function deleteAccount(id: number): Promise<void> {
     throw error;
   }
 }
+
+export async function deleteUserAccount(id: number): Promise<number> {
+  const { error } = await supabase
+    .from('user_accounts')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting account:', error);
+    throw error;
+  }
+  console.log('Account deleted successfully');
+  return id;
+}
+
+export async function updateUserAccount(id: number, updates: Partial<Account>): Promise<Account> {
+  const { data, error } = await supabase
+    .from('user_accounts')
+    .update(updates)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error updating account:', error);
+    throw error;
+  }
+
+  return data;
+}

@@ -6,23 +6,20 @@ import { Account } from '@/types/accounts';
 import { fetchUserAccounts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function AccountsList({ refreshTrigger }: { refreshTrigger: number }) {
+export default function AccountsList({ refreshTrigger, onAccountsChanged }: { refreshTrigger: number, onAccountsChanged: () => void }) {
   const [accountsByType, setAccountsByType] = useState<Record<string, Account[]>>({});
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user && user.id) {
-      console.log('User authenticated, id:', user.id);
+    if (user) {
       loadAccounts();
-    } else {
-      console.log('User not authenticated or missing id');
     }
   }, [user, refreshTrigger]);
 
   async function loadAccounts() {
     if (!user) return;
     try {
-      console.log('Loading accounts for user:', user.id);
+      console.log('Loading accounts...');
       const fetchedAccounts = await fetchUserAccounts(user.id);
       console.log('Fetched accounts:', fetchedAccounts);
       const grouped = fetchedAccounts.reduce((acc, account) => {
@@ -32,12 +29,18 @@ export default function AccountsList({ refreshTrigger }: { refreshTrigger: numbe
         acc[account.type].push(account);
         return acc;
       }, {} as Record<string, Account[]>);
-      console.log('Grouped accounts:', grouped);
       setAccountsByType(grouped);
+      console.log('Grouped accounts:', grouped);
     } catch (error) {
       console.error('Failed to fetch accounts:', error);
     }
   }
+
+  const handleAccountChange = () => {
+    console.log('Account changed, triggering refresh');
+    onAccountsChanged();
+    loadAccounts();
+  };
 
   return (
     <div className="space-y-4">
@@ -46,6 +49,7 @@ export default function AccountsList({ refreshTrigger }: { refreshTrigger: numbe
           key={type}
           type={type}
           accounts={accounts}
+          onAccountsChanged={handleAccountChange}
         />
       ))}
     </div>

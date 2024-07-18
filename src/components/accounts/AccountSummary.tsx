@@ -6,7 +6,7 @@ import { fetchUserAccounts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Account } from '@/types/accounts';
 
-export default function AccountSummary() {
+export default function AccountSummary({ refreshTrigger }: { refreshTrigger: number }) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const { user } = useAuth();
 
@@ -14,7 +14,7 @@ export default function AccountSummary() {
     if (user) {
       loadAccounts();
     }
-  }, [user]);
+  }, [user, refreshTrigger]);
 
   async function loadAccounts() {
     if (!user) return;
