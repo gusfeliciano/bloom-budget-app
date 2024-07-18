@@ -1,61 +1,53 @@
 import { supabase } from './supabase';
 import { Account } from '@/types/accounts';
 
-
 export async function fetchUserAccounts(userId: string): Promise<Account[]> {
+  console.log('Fetching accounts for user:', userId);
   const { data, error } = await supabase
     .from('user_accounts')
     .select('*')
     .eq('user_id', userId)
     .order('created_at');
 
-  if (error) throw error;
-  return data;
-}
-
-export async function createUserAccount(userId: string, account: Omit<Account, 'id' | 'user_id'>): Promise<Account> {
-  console.log('Creating user account', { userId, account });
-  const { data, error } = await supabase
-    .from('user_accounts')
-    .insert({ id: userId, ...account, user_id: userId })
-    .single();
-
   if (error) {
-    console.error('Supabase error creating account:', error);
+    console.error('Error fetching accounts:', error);
     throw error;
   }
 
-  console.log('Account created in Supabase', data);
-  return data;
+  console.log('Fetched accounts:', data);
+  return data || [];
 }
 
-
-
-export async function addAccount(account: Omit<Account, 'id'>, userId: string): Promise<Account> {
+export async function createUserAccount(
+  userId: string, 
+  account: Pick<Account, 'name' | 'type' | 'balance'>
+): Promise<Account> {
+  console.log('Creating account for user:', userId, 'Account details:', account);
   const { data, error } = await supabase
     .from('user_accounts')
-    .insert({
+    .insert({ 
+      ...account, 
       user_id: userId,
-      name: account.name,
-      type: account.type,
-      balance: account.balance
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     })
     .single();
 
   if (error) {
-    console.error('Error adding account:', error);
+    console.error('Detailed error:', error);
     throw error;
   }
 
-  return data as Account;
+  return data;
 }
-
-
 
 export async function updateAccount(account: Account): Promise<Account> {
   const { data, error } = await supabase
-    .from('accounts')
-    .update(account)
+    .from('user_accounts')
+    .update({
+      ...account,
+      updated_at: new Date().toISOString()
+    })
     .eq('id', account.id)
     .single();
 
@@ -64,12 +56,12 @@ export async function updateAccount(account: Account): Promise<Account> {
     throw error;
   }
 
-  return data as Account;
+  return data;
 }
 
 export async function deleteAccount(id: number): Promise<void> {
   const { error } = await supabase
-    .from('accounts')
+    .from('user_accounts')
     .delete()
     .eq('id', id);
 

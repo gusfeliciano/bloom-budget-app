@@ -1,46 +1,45 @@
 'use client';
 
-import { useState } from 'react'
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { createUserAccount } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () => void }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [accountName, setAccountName] = useState('')
-  const [accountType, setAccountType] = useState('')
-  const [balance, setBalance] = useState('')
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [accountName, setAccountName] = useState('');
+  const [accountType, setAccountType] = useState('');
+  const [balance, setBalance] = useState('');
   const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log('Form submitted', { accountName, accountType, balance });
+    e.preventDefault();
     if (!user) {
       console.error('User not authenticated');
       return;
     }
+    console.log('Authenticated user:', user);
     try {
-      console.log('Attempting to create user account', { userId: user.id, accountName, accountType, balance });
-      const newAccount = await createUserAccount(user.id, {
+      await createUserAccount(user.id, {
         name: accountName,
         type: accountType,
         balance: parseFloat(balance),
       });
-      console.log('Account created successfully', newAccount);
-      // Reset form
-      setAccountName('')
-      setAccountType('')
-      setBalance('')
-      setIsExpanded(false)
+      // Reset form and notify parent
+      setAccountName('');
+      setAccountType('');
+      setBalance('');
+      setIsExpanded(false);
+      console.log('Account added successfully, calling onAccountAdded');
       onAccountAdded();
     } catch (error) {
       console.error('Failed to add account:', error);
     }
-  }
+  };
 
   return (
     <Card>
@@ -50,11 +49,7 @@ export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () 
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <span>Add New Account</span>
-          {isExpanded ? (
-            <ChevronUp size={20} />
-          ) : (
-            <ChevronDown size={20} />
-          )}
+          {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
         </CardTitle>
       </CardHeader>
       {isExpanded && (
@@ -83,6 +78,7 @@ export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () 
               <Input
                 id="balance"
                 type="number"
+                step="0.01"
                 value={balance}
                 onChange={(e) => setBalance(e.target.value)}
                 required
@@ -98,5 +94,5 @@ export default function AddAccountForm({ onAccountAdded }: { onAccountAdded: () 
         </CardContent>
       )}
     </Card>
-  )
+  );
 }

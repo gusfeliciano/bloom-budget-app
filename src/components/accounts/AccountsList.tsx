@@ -3,100 +3,51 @@
 import { useState, useEffect } from 'react';
 import AccountCard from './AccountCard';
 import { Account } from '@/types/accounts';
-import AddSubAccountModal from './AddSubAccountModal';
-import { fetchUserAccounts, addAccount } from '@/lib/api';
+import { fetchUserAccounts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function AccountsList() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+export default function AccountsList({ refreshTrigger }: { refreshTrigger: number }) {
+  const [accountsByType, setAccountsByType] = useState<Record<string, Account[]>>({});
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user) {
-      console.log('Loading accounts');
+    if (user && user.id) {
+      console.log('User authenticated, id:', user.id);
       loadAccounts();
+    } else {
+      console.log('User not authenticated or missing id');
     }
-  }, [user]);
+  }, [user, refreshTrigger]);
 
   async function loadAccounts() {
     if (!user) return;
     try {
+      console.log('Loading accounts for user:', user.id);
       const fetchedAccounts = await fetchUserAccounts(user.id);
-      const structuredAccounts = structureAccounts(fetchedAccounts);
-      setAccounts(structuredAccounts);
+      console.log('Fetched accounts:', fetchedAccounts);
+      const grouped = fetchedAccounts.reduce((acc, account) => {
+        if (!acc[account.type]) {
+          acc[account.type] = [];
+        }
+        acc[account.type].push(account);
+        return acc;
+      }, {} as Record<string, Account[]>);
+      console.log('Grouped accounts:', grouped);
+      setAccountsByType(grouped);
     } catch (error) {
       console.error('Failed to fetch accounts:', error);
     }
   }
 
-      function structureAccounts(flatAccounts: Account[]): Account[] {
-        const accountMap = new Map<number, Account>();
-        const topLevelAccounts: Account[] = [];
-    
-        flatAccounts.forEach(account => {
-          account.subAccounts = [];
-          accountMap.set(account.id, account);
-        });
-    
-        flatAccounts.forEach(account => {
-          if (account.parent_id) {
-            const parentAccount = accountMap.get(account.parent_id);
-            if (parentAccount) {
-              parentAccount.subAccounts?.push(account);
-            }
-          } else {
-            topLevelAccounts.push(account);
-          }
-        });
-    
-        return topLevelAccounts;
-      }
-  
-    const handleAddSubAccount = (parentId: number) => {
-    setSelectedParentId(parentId);
-    setIsModalOpen(true);
-  };
-
-  const addSubAccount = async (subAccount: Omit<Account, 'id'>) => {
-    if (!user) {
-      console.error('User not authenticated');
-      return;
-    }
-    try {
-      const newSubAccount = await addAccount({ ...subAccount, parent_id: selectedParentId! }, user.id);
-      setAccounts(prevAccounts => {
-        return prevAccounts.map(account => {
-          if (account.id === selectedParentId) {
-            return {
-              ...account,
-              subAccounts: [...(account.subAccounts || []), newSubAccount]
-            };
-          }
-          return account;
-        });
-      });
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error('Failed to add sub-account:', error);
-    }
-  };
-
   return (
     <div className="space-y-4">
-      {accounts.map((account) => (
+      {Object.entries(accountsByType).map(([type, accounts]) => (
         <AccountCard 
-          key={account.id} 
-          account={account}
-          onAddSubAccount={handleAddSubAccount}
+          key={type}
+          type={type}
+          accounts={accounts}
         />
       ))}
-      <AddSubAccountModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAddSubAccount={addSubAccount}
-      />
     </div>
   );
 }
