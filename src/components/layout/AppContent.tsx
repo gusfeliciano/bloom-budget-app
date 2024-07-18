@@ -12,8 +12,12 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!loading && !user && pathname !== '/auth') {
-      router.push('/auth');
+    if (!loading) {
+      if (!user && pathname !== '/auth') {
+        router.push('/auth');
+      } else if (user && !user.email_confirmed_at && pathname !== '/verify-email') {
+        router.push('/verify-email');
+      }
     }
   }, [user, loading, router, pathname]);
 
@@ -27,9 +31,9 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="flex h-screen">
-      {user && <Sidebar />}
+      {user && user.email_confirmed_at && <Sidebar />}
       <div className="flex-1 flex flex-col">
-        {user && <Header />}
+        {user && user.email_confirmed_at && <Header />}
         <main className="flex-1 p-6 bg-gray-100">
           {children}
         </main>
