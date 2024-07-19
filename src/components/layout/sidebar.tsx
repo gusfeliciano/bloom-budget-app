@@ -22,14 +22,17 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-indigo-500 text-white p-6 flex flex-col">
-      <nav className="flex-grow space-y-2">
+    <aside className="w-64 bg-indigo-700 text-white flex flex-col">
+      <div className="p-6 bg-indigo-800">
+        <h1 className="text-2xl font-bold">My Budget App</h1>
+      </div>
+      <nav className="flex-grow space-y-2 p-6">
         {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center py-2 px-4 rounded ${
-              pathname === item.href ? 'bg-blue-800' : 'hover:bg-blue-600'
+            className={`flex items-center py-2 px-4 rounded transition-colors ${
+              pathname === item.href ? 'bg-indigo-600' : 'hover:bg-indigo-600'
             }`}
           >
             <item.icon className="mr-2 h-4 w-4" />
@@ -37,11 +40,11 @@ export default function Sidebar() {
           </Link>
         ))}
       </nav>
-      <div className="mt-auto">
+      <div className="p-6">
         {user && (
           <button 
             onClick={handleSignOut}
-            className="w-full py-2 px-4 bg-cyan-500 hover:bg-cyan-600 text-white rounded"
+            className="w-full py-2 px-4 bg-sky-600 hover:bg-sky-700 text-white rounded transition-colors"
           >
             Sign Out
           </button>
