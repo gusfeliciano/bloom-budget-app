@@ -229,13 +229,21 @@ export async function fetchCategories(userId: string): Promise<TransactionCatego
         isParent: category.parent_id === null
       }));
     } else {
-      // If no categories found, return default categories
-      return defaultCategories.map((category, index) => ({
+      // If no categories found, trigger the addition of default categories
+      await addDefaultCategories(userId);
+      // Fetch categories again after adding defaults
+      const { data: newData, error: newError } = await supabase
+        .from('transaction_categories')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name');
+
+      if (newError) throw newError;
+
+      return newData?.map(category => ({
         ...category,
-        id: index + 1,
-        user_id: userId,
-        isParent: true
-      }));
+        isParent: category.parent_id === null
+      })) || [];
     }
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -250,8 +258,7 @@ export async function createCategory(
   parentId: number | null = null
 ): Promise<TransactionCategory | null> {
   try {
-    const newCategory = { user_id: userId, name, parent_id: parentId };
-    console.log('Creating category:', newCategory);
+    let parent_id = parentId;
 
     // If parentId is provided, check if it exists
     if (parentId !== null) {
@@ -263,9 +270,12 @@ export async function createCategory(
 
       if (parentCheckError || !parentCategory) {
         console.error('Parent category not found:', parentCheckError);
-        throw new Error('Parent category not found');
+        parent_id = null; // Set to null if parent doesn't exist
       }
     }
+
+    const newCategory = { user_id: userId, name, parent_id };
+    console.log('Creating category:', newCategory);
 
     const { data, error } = await supabase
       .from('transaction_categories')
@@ -324,67 +334,28 @@ export async function deleteCategory(id: number): Promise<void> {
   }
 }
 
-export const defaultCategories: Omit<TransactionCategory, 'id' | 'user_id'>[] = [
-  { name: 'Income', parent_id: null },
-  { name: 'Salary', parent_id: 1 },
-  { name: 'Expenses', parent_id: null },
-  { name: 'Groceries', parent_id: 3 },
-  { name: 'Investments', parent_id: null },
-  { name: 'Retirement Account', parent_id: 5 },
-];
-
 export async function addDefaultCategories(userId: string): Promise<void> {
+  const defaultCategories = [
+    { name: 'Income', parent_id: null },
+    { name: 'Salary', parent_name: 'Income' },
+    { name: 'Expenses', parent_id: null },
+    { name: 'Groceries', parent_name: 'Expenses' },
+    { name: 'Investments', parent_id: null },
+    { name: 'Retirement Account', parent_name: 'Investments' },
+  ];
+
   try {
-    // Fetch existing categories for the user
-    const { data: existingCategories, error: fetchError } = await supabase
-      .from('transaction_categories')
-      .select('name')
-      .eq('user_id', userId);
+    // Start a Supabase transaction
+    const { data, error } = await supabase.rpc('add_default_categories', {
+      p_user_id: userId,
+      p_categories: defaultCategories
+    });
 
-    if (fetchError) throw fetchError;
+    if (error) throw error;
 
-    const existingCategoryNames = new Set(existingCategories?.map(c => c.name) || []);
-
-    // Filter out categories that already exist
-    const categoriesToAdd = defaultCategories.filter(c => !existingCategoryNames.has(c.name));
-
-    if (categoriesToAdd.length === 0) {
-      console.log('All default categories already exist for this user');
-      return;
-    }
-
-    // Separate parent and child categories
-    const parentCategories = categoriesToAdd.filter(category => category.parent_id === null);
-    const childCategories = categoriesToAdd.filter(category => category.parent_id !== null);
-
-    // Insert parent categories
-    const { data: insertedParents, error: parentInsertError } = await supabase
-      .from('transaction_categories')
-      .insert(parentCategories.map(category => ({ ...category, user_id: userId })))
-      .select();
-
-    if (parentInsertError) throw parentInsertError;
-
-    // Map the inserted parent categories to their new IDs
-    const parentIdMap = new Map(insertedParents.map(parent => [parent.name, parent.id]));
-
-    // Update child categories with the new parent IDs
-    const updatedChildCategories = childCategories.map(child => ({
-      ...child,
-      user_id: userId,
-      parent_id: parentIdMap.get(defaultCategories.find(c => c.id === child.parent_id)?.name || '') || null
-    }));
-
-    // Insert child categories
-    const { error: childInsertError } = await supabase
-      .from('transaction_categories')
-      .insert(updatedChildCategories);
-
-    if (childInsertError) throw childInsertError;
-
-    console.log('Default categories added successfully');
+    console.log('Default categories added successfully:', data);
   } catch (error) {
-    console.error('Error adding default categories:', error);
-    toast.error('Failed to add default categories. Please try again.');
+    console.error('Error in addDefaultCategories:', error);
+    toast.error('Failed to add default categories. Please try again or contact support.');
   }
 }

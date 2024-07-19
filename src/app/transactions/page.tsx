@@ -9,6 +9,7 @@ import TransactionList from '@/components/transactions/TransactionList';
 import { Button } from "@/components/ui/button";
 import { Account } from '@/types/accounts';
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
+import { toast } from 'react-hot-toast';
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -26,7 +27,10 @@ export default function TransactionsPage() {
       loadTransactions();
       loadAccounts();
       loadCategories();
-      addDefaultCategories(user.id);
+      addDefaultCategories(user.id).catch(error => {
+        console.error('Failed to add default categories:', error);
+        toast.error('There was an issue setting up your account. Some features may be limited.');
+      });
     }
   }, [user, currentPage]);
 
