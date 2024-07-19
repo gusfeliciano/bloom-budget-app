@@ -2,26 +2,23 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchTransactions, Transaction, fetchUserAccounts, fetchCategories, TransactionCategory } from '@/lib/api';
+import { fetchTransactions, Transaction, fetchUserAccounts, fetchCategories, TransactionCategory, addDefaultCategories } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import AddTransactionForm from '@/components/transactions/AddTransactionForm';
-import TransactionItem from '@/components/transactions/TransactionItem';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import TransactionList from '@/components/transactions/TransactionList';
 import { Button } from "@/components/ui/button";
 import { Account } from '@/types/accounts';
+import AddCategoryModal from '@/components/transactions/AddCategoryModal';
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
-  const [searchTerm, setSearchTerm] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -29,6 +26,7 @@ export default function TransactionsPage() {
       loadTransactions();
       loadAccounts();
       loadCategories();
+      addDefaultCategories(user.id);
     }
   }, [user, currentPage]);
 
@@ -68,31 +66,8 @@ export default function TransactionsPage() {
 
   const handleTransactionAdded = () => {
     loadTransactions();
+    setIsAddingTransaction(false);
   };
-
-  const handleTransactionUpdated = () => {
-    loadTransactions();
-  };
-
-  const handleTransactionDeleted = () => {
-    loadTransactions();
-  };
-
-  const filteredTransactions = transactions.filter(transaction => {
-    if (filterType !== 'all' && transaction.type !== filterType) return false;
-    if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-    return true;
-  });
-
-  const sortedTransactions = filteredTransactions.sort((a, b) => {
-    if (sortBy === 'date') {
-      return sortOrder === 'asc' 
-        ? new Date(a.date).getTime() - new Date(b.date).getTime()
-        : new Date(b.date).getTime() - new Date(a.date).getTime();
-    } else {
-      return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount;
-    }
-  });
 
   if (isLoading) {
     return (
@@ -105,58 +80,27 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Transactions</h1>
-      <AddTransactionForm onTransactionAdded={handleTransactionAdded} accounts={accounts} categories={categories} />
-      <div className="flex space-x-4">
-        <Select onValueChange={(value: 'date' | 'amount') => setSortBy(value)} defaultValue={sortBy}>
-          <SelectTrigger>
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date">Date</SelectItem>
-            <SelectItem value="amount">Amount</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select onValueChange={(value: 'asc' | 'desc') => setSortOrder(value)} defaultValue={sortOrder}>
-          <SelectTrigger>
-            <SelectValue placeholder="Sort order" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="asc">Ascending</SelectItem>
-            <SelectItem value="desc">Descending</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select onValueChange={(value: 'all' | 'income' | 'expense') => setFilterType(value)} defaultValue={filterType}>
-          <SelectTrigger>
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="income">Income</SelectItem>
-            <SelectItem value="expense">Expense</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input 
-          placeholder="Search transactions" 
-          value={searchTerm} 
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Transactions</h1>
+        <div className="space-x-2">
+          <Button onClick={() => setIsAddingTransaction(true)}>Add Transaction</Button>
+          <Button onClick={() => setIsAddingCategory(true)}>Add Category</Button>
+        </div>
       </div>
-      {sortedTransactions.length === 0 ? (
-        <p>No transactions found. Add a new transaction to get started.</p>
-      ) : (
-        <ul className="space-y-2">
-          {sortedTransactions.map((transaction) => (
-            <TransactionItem 
-              key={transaction.id} 
-              transaction={transaction} 
-              onTransactionUpdated={handleTransactionUpdated}
-              onTransactionDeleted={handleTransactionDeleted}
-              categories={categories}
-            />
-          ))}
-        </ul>
+      {isAddingTransaction && (
+        <AddTransactionForm 
+          onTransactionAdded={handleTransactionAdded} 
+          accounts={accounts} 
+          categories={categories}
+          onCancel={() => setIsAddingTransaction(false)}
+        />
       )}
+      <TransactionList 
+        transactions={transactions} 
+        categories={categories}
+        onTransactionUpdated={loadTransactions}
+        onTransactionDeleted={loadTransactions}
+      />
       <div className="flex justify-between items-center">
         <Button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>
           Previous
@@ -166,6 +110,16 @@ export default function TransactionsPage() {
           Next
         </Button>
       </div>
+      <AddCategoryModal
+        isOpen={isAddingCategory}
+        onClose={() => setIsAddingCategory(false)}
+        onCategoryAdded={() => {
+          loadCategories();
+          setIsAddingCategory(false);
+        }}
+        categories={categories}
+        userId={user?.id}
+      />
     </div>
   );
 }

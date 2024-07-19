@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { createTransaction, TransactionCategory } from '@/lib/api';
@@ -8,17 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Account } from '@/types/accounts';
+import { toast } from 'react-hot-toast';
 
 interface AddTransactionFormProps {
   onTransactionAdded: () => void;
+  onCancel: () => void;
   accounts: Account[];
   categories: TransactionCategory[];
 }
 
-export default function AddTransactionForm({ onTransactionAdded, accounts, categories }: AddTransactionFormProps) {
+export default function AddTransactionForm({ onTransactionAdded, onCancel, accounts, categories }: AddTransactionFormProps) {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [categoryId, setCategoryId] = useState('');
+  const [categoryId, setCategoryId] = useState<string>('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [accountId, setAccountId] = useState('');
@@ -27,27 +30,29 @@ export default function AddTransactionForm({ onTransactionAdded, accounts, categ
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !accountId || !categoryId) return;
-
+    if (!user || !accountId || !categoryId) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+  
     setIsLoading(true);
     try {
-      await createTransaction(user.id, {
+      const newTransaction = {
         account_id: parseInt(accountId),
+        category_id: parseInt(categoryId),
         description,
         amount: parseFloat(amount),
-        category_id: parseInt(categoryId),
         type,
         date,
-      });
+      };
+
+      console.log('Submitting transaction:', newTransaction);
+      await createTransaction(user.id, newTransaction);
+      toast.success('Transaction added successfully');
       onTransactionAdded();
-      setDescription('');
-      setAmount('');
-      setCategoryId('');
-      setType('expense');
-      setDate(new Date().toISOString().split('T')[0]);
-      setAccountId('');
     } catch (error) {
       console.error('Failed to add transaction:', error);
+      toast.error('Failed to add transaction. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -55,6 +60,7 @@ export default function AddTransactionForm({ onTransactionAdded, accounts, categ
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <h2 className="text-xl font-bold mb-4">Add New Transaction</h2>
       <div>
         <Label htmlFor="description">Description</Label>
         <Input
@@ -77,22 +83,26 @@ export default function AddTransactionForm({ onTransactionAdded, accounts, categ
       </div>
       <div>
         <Label htmlFor="category">Category</Label>
-        <Select onValueChange={setCategoryId} value={categoryId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select category" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id.toString()}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {categories.length > 0 ? (
+          <Select onValueChange={setCategoryId} value={categoryId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id.toString()}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <p>No categories available. Please add categories first.</p>
+        )}
       </div>
       <div>
         <Label htmlFor="type">Type</Label>
-        <Select onValueChange={(value: 'income' | 'expense') => setType(value)} defaultValue={type}>
+        <Select onValueChange={(value: 'income' | 'expense') => setType(value)} value={type}>
           <SelectTrigger>
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
@@ -127,9 +137,14 @@ export default function AddTransactionForm({ onTransactionAdded, accounts, categ
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit" disabled={isLoading || !accountId || !categoryId}>
-        {isLoading ? 'Adding...' : 'Add Transaction'}
-      </Button>
+      <div className="flex justify-end space-x-2">
+        <Button type="button" onClick={onCancel} variant="outline">
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isLoading || !accountId || !categoryId || categories.length === 0}>
+          {isLoading ? 'Adding...' : 'Add Transaction'}
+        </Button>
+      </div>
     </form>
   );
 }

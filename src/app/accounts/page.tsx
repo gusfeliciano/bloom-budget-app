@@ -5,7 +5,7 @@ import AccountsList from '@/components/accounts/AccountsList';
 import AccountSummary from '@/components/accounts/AccountSummary';
 import AddAccountForm from '@/components/accounts/AddAccountForm';
 
-export default function AccountsPage() {
+export default function AccountsPage() { 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleAccountsChanged = () => {

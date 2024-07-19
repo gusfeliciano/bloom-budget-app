@@ -1,7 +1,5 @@
-'use client';
-
 import { useState } from 'react';
-import { Transaction, updateTransaction, deleteTransaction, TransactionCategory } from '@/lib/api';
+import { Transaction, TransactionCategory, updateTransaction, deleteTransaction } from '@/lib/api';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,11 +12,16 @@ interface TransactionItemProps {
   onTransactionDeleted: () => void;
 }
 
-export default function TransactionItem({ transaction, categories, onTransactionUpdated, onTransactionDeleted }: TransactionItemProps) {
+export default function TransactionItem({ 
+  transaction, 
+  categories, 
+  onTransactionUpdated, 
+  onTransactionDeleted 
+}: TransactionItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTransaction, setEditedTransaction] = useState(transaction);
 
-  const category = categories.find(c => c.id === transaction.category_id);
+  const childCategories = categories.filter(category => !category.isParent);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -50,6 +53,8 @@ export default function TransactionItem({ transaction, categories, onTransaction
     }
   };
 
+  const category = categories.find(c => c.id === transaction.category_id);
+
   if (isEditing) {
     return (
       <li className="bg-white p-4 rounded shadow space-y-2">
@@ -64,37 +69,20 @@ export default function TransactionItem({ transaction, categories, onTransaction
           onChange={(e) => setEditedTransaction({ ...editedTransaction, amount: parseFloat(e.target.value) })}
         />
         <Select
+          value={editedTransaction.category_id.toString()}
           onValueChange={(value) => setEditedTransaction({ ...editedTransaction, category_id: parseInt(value) })}
-          defaultValue={editedTransaction.category_id.toString()}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
           </SelectTrigger>
           <SelectContent>
-            {categories.map((category) => (
+            {childCategories.map((category) => (
               <SelectItem key={category.id} value={category.id.toString()}>
                 {category.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select
-          onValueChange={(value: 'income' | 'expense') => setEditedTransaction({ ...editedTransaction, type: value })}
-          defaultValue={editedTransaction.type}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="income">Income</SelectItem>
-            <SelectItem value="expense">Expense</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input
-          type="date"
-          value={editedTransaction.date}
-          onChange={(e) => setEditedTransaction({ ...editedTransaction, date: e.target.value })}
-        />
         <div className="flex justify-end space-x-2">
           <Button onClick={handleSave} size="sm"><Check size={16} /></Button>
           <Button onClick={handleCancel} size="sm" variant="outline"><X size={16} /></Button>
@@ -104,21 +92,17 @@ export default function TransactionItem({ transaction, categories, onTransaction
   }
 
   return (
-    <li className="bg-white p-4 rounded shadow">
-      <div className="flex justify-between items-center">
-        <span>{transaction.description}</span>
-        <div className="flex items-center space-x-2">
-          <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
-            {transaction.type === 'income' ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
-          </span>
-          <Button onClick={handleEdit} size="sm" variant="ghost"><Pencil size={16} /></Button>
-          <Button onClick={handleDelete} size="sm" variant="ghost"><Trash2 size={16} /></Button>
-        </div>
+    <li className="bg-white p-4 rounded shadow flex justify-between items-center">
+      <div>
+        <span className="font-medium">{transaction.description}</span>
+        <span className="text-sm text-gray-500 ml-2">{category?.name}</span>
       </div>
-      <div className="text-sm text-gray-500">
-        <span>{new Date(transaction.date).toLocaleDateString()}</span>
-        <span className="mx-2">•</span>
-        <span>{category ? category.name : 'Uncategorized'}</span>
+      <div className="flex items-center space-x-2">
+        <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
+          {transaction.type === 'income' ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
+        </span>
+        <Button onClick={handleEdit} size="sm" variant="ghost"><Pencil size={16} /></Button>
+        <Button onClick={handleDelete} size="sm" variant="ghost"><Trash2 size={16} /></Button>
       </div>
     </li>
   );
