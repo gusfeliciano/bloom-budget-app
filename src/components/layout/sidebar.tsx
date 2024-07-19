@@ -22,7 +22,7 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-blue-700 text-white p-6 flex flex-col">
+    <aside className="w-64 bg-indigo-500 text-white p-6 flex flex-col">
       <nav className="flex-grow space-y-2">
         {navItems.map((item) => (
           <Link
@@ -41,7 +41,7 @@ export default function Sidebar() {
         {user && (
           <button 
             onClick={handleSignOut}
-            className="w-full py-2 px-4 bg-red-500 text-white rounded hover:bg-red-600"
+            className="w-full py-2 px-4 bg-cyan-500 hover:bg-cyan-600 text-white rounded"
           >
             Sign Out
           </button>
