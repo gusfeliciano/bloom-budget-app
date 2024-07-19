@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import AddTransactionForm from '@/components/transactions/AddTransactionForm';
 import TransactionList from '@/components/transactions/TransactionList';
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Account } from '@/types/accounts';
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
 import { toast } from 'react-hot-toast';
@@ -92,19 +93,33 @@ export default function TransactionsPage() {
         </div>
       </div>
       {isAddingTransaction && (
-        <AddTransactionForm 
-          onTransactionAdded={handleTransactionAdded} 
-          accounts={accounts} 
-          categories={categories}
-          onCancel={() => setIsAddingTransaction(false)}
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>Add New Transaction</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AddTransactionForm 
+              onTransactionAdded={handleTransactionAdded} 
+              accounts={accounts} 
+              categories={categories}
+              onCancel={() => setIsAddingTransaction(false)}
+            />
+          </CardContent>
+        </Card>
       )}
-      <TransactionList 
-        transactions={transactions} 
-        categories={categories}
-        onTransactionUpdated={loadTransactions}
-        onTransactionDeleted={loadTransactions}
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Transactions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TransactionList 
+            transactions={transactions} 
+            categories={categories}
+            onTransactionUpdated={loadTransactions}
+            onTransactionDeleted={loadTransactions}
+          />
+        </CardContent>
+      </Card>
       <div className="flex justify-between items-center">
         <Button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>
           Previous
