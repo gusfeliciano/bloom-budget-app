@@ -5,7 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
 import { fetchCategories, TransactionCategory } from '@/lib/api';
 
@@ -35,6 +36,7 @@ export default function BudgetPage() {
   const [budget, setBudget] = useState<Budget>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [readyToAssign, setReadyToAssign] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
@@ -145,6 +147,42 @@ export default function BudgetPage() {
     );
   };
 
+  const addNewGroup = (name: string) => {
+    const newGroup: ParentCategory = {
+      id: Math.max(...budget.map(b => b.id)) + 1,
+      name,
+      children: [],
+      isCollapsed: false,
+      budget: 0,
+      actual: 0,
+      remaining: 0
+    };
+    setBudget([...budget, newGroup]);
+  };
+
+  const addNewCategory = (parentId: number, name: string) => {
+    setBudget(prevBudget =>
+      prevBudget.map(parent =>
+        parent.id === parentId
+          ? {
+              ...parent,
+              children: [
+                ...parent.children,
+                {
+                  id: Math.max(...parent.children.map(c => c.id)) + 1,
+                  name,
+                  budget: 0,
+                  actual: 0,
+                  remaining: 0,
+                  parentId
+                }
+              ]
+            }
+          : parent
+      )
+    );
+  };
+
   if (isLoading) {
     return <div>Loading...</div>;
   }
@@ -153,12 +191,6 @@ export default function BudgetPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">{currentMonth}</h1>
-        <div className="flex space-x-4">
-          {/* TBD on if we include buttons for other pages here.
-          <Button variant="outline">Budget</Button>
-          <Button variant="outline">Forecast</Button>
-          */}
-        </div>
       </div>
       <div className="flex justify-between">
         <div className="w-3/4 pr-6">
@@ -173,64 +205,95 @@ export default function BudgetPage() {
                     {parentCategory.isCollapsed ? <ChevronRight className="mr-2" /> : <ChevronDown className="mr-2" />}
                     {parentCategory.name}
                   </CardTitle>
-                  <div className="grid grid-cols-3 gap-8 text-sm font-semibold w-1/2">
-                    <div className="text-center">BUDGET</div>
-                    <div className="text-center">ACTUAL</div>
-                    <div className="text-center">REMAINING</div>
-                  </div>
                 </div>
               </CardHeader>
               {!parentCategory.isCollapsed && (
                 <CardContent>
-                  {parentCategory.children.map((childCategory) => (
-                    <div key={childCategory.id} className="grid grid-cols-4 gap-8 py-2 items-center">
-                      <div>{childCategory.name}</div>
-                      <div className="relative">
-                        <Input 
-                          type="number" 
-                          value={childCategory.budget} 
-                          onChange={(e) => handleBudgetChange(parentCategory.id, childCategory.id, Number(e.target.value))}
-                          className="w-24 text-right pl-6 py-1"
-                          onFocus={(e) => e.target.select()}
-                        />
-                        <span className="absolute left-2 top-1/2 transform -translate-y-1/2">$</span>
-                      </div>
-                      <div className="text-center">${childCategory.actual.toFixed(2)}</div>
-                      <div className={`text-center ${childCategory.remaining >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${childCategory.remaining.toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[200px]">Category</TableHead>
+                        <TableHead>Budget</TableHead>
+                        <TableHead>Actual</TableHead>
+                        <TableHead>Remaining</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {parentCategory.children.map((childCategory) => (
+                        <TableRow key={childCategory.id}>
+                          <TableCell>{childCategory.name}</TableCell>
+                          <TableCell>
+                            <div className="relative w-24">
+                              <Input 
+                                type="number" 
+                                value={childCategory.budget} 
+                                onChange={(e) => handleBudgetChange(parentCategory.id, childCategory.id, Number(e.target.value))}
+                                className="pl-6 py-1"
+                                onFocus={(e) => e.target.select()}
+                              />
+                              <span className="absolute left-2 top-1/2 transform -translate-y-1/2">$</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>${childCategory.actual.toFixed(2)}</TableCell>
+                          <TableCell className={childCategory.remaining >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            ${childCategory.remaining.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="font-semibold">
+                        <TableCell>Total</TableCell>
+                        <TableCell>${parentCategory.budget.toFixed(2)}</TableCell>
+                        <TableCell>${parentCategory.actual.toFixed(2)}</TableCell>
+                        <TableCell className={parentCategory.remaining >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          ${parentCategory.remaining.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => setIsAddingCategory(true)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Add Category
+                  </Button>
                 </CardContent>
               )}
             </Card>
           ))}
+          <Button 
+            variant="outline" 
+            onClick={() => setIsAddingGroup(true)}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Add Group
+          </Button>
         </div>
         <div className="w-1/4">
-          <Card className="mb-4 bg-green-100">
-            <CardContent className="p-4">
-              <h2 className="font-semibold mb-2">Left to budget</h2>
-              <div className="text-3xl font-bold">${readyToAssign.toFixed(2)}</div>
-            </CardContent>
+        <Card className="mb-4 bg-green-100">
+          <CardContent className="p-4">
+            <h2 className="font-semibold mb-2">Left to budget</h2>
+            <div className="text-3xl font-bold">${readyToAssign.toFixed(2)}</div>
+          </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4">
-              <h2 className="font-semibold mb-4">Summary</h2>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Income</span>
-                  <span>${summary.income.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Expenses</span>
-                  <span>${summary.expenses.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Goals</span>
-                  <span>${summary.goals.toFixed(2)}</span>
-                </div>
+          <CardContent className="p-4">
+            <h2 className="font-semibold mb-4">Summary</h2>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span>Income</span>
+                <span>${summary.income.toFixed(2)}</span>
               </div>
-            </CardContent>
+              <div className="flex justify-between">
+                <span>Expenses</span>
+                <span>${summary.expenses.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Goals</span>
+                <span>${summary.goals.toFixed(2)}</span>
+              </div>
+            </div>
+          </CardContent>
           </Card>
         </div>
       </div>
@@ -245,6 +308,10 @@ export default function BudgetPage() {
         categories={categories}
         userId={user?.id}
       />
+      {/* Add modals for adding new groups and categories */}
     </div>
   );
 }
+
+
+
