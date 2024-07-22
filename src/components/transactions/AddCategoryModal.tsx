@@ -6,11 +6,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createCategory, TransactionCategory } from '@/lib/api';
 import { toast } from 'react-hot-toast';
 
+interface ParentCategory {
+  id: number;
+  name: string;
+  type: 'income' | 'expense';
+  children: TransactionCategory[];
+}
+
 interface AddCategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCategoryAdded: () => void;
-  categories: TransactionCategory[];
+  categories: ParentCategory[];
   userId: string | undefined;
 }
 
@@ -44,7 +51,7 @@ export default function AddCategoryModal({
     }
   };
 
-  const parentCategories = categories.filter(c => c.parent_id === null);
+  const parentCategories = categories.filter(c => c.type === 'expense');
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

@@ -120,6 +120,7 @@ export interface TransactionCategory {
   name: string;
   user_id: string;
   parent_id: number | null;
+  type: 'income' | 'expense';
   isParent?: boolean; 
 }
 
@@ -345,7 +346,7 @@ export async function addDefaultCategories(userId: string): Promise<void> {
   ];
 
   try {
-    // Start a Supabase transaction
+    // Use the existing RPC function
     const { data, error } = await supabase.rpc('add_default_categories', {
       p_user_id: userId,
       p_categories: defaultCategories
@@ -354,8 +355,150 @@ export async function addDefaultCategories(userId: string): Promise<void> {
     if (error) throw error;
 
     console.log('Default categories added successfully:', data);
+
+    // After adding default categories, update their types
+    await updateCategoryTypes(userId);
   } catch (error) {
     console.error('Error in addDefaultCategories:', error);
     toast.error('Failed to add default categories. Please try again or contact support.');
+  }
+}
+
+async function updateCategoryTypes(userId: string): Promise<void> {
+  const categoryTypes = {
+    'Income': 'income',
+    'Salary': 'income',
+    'Expenses': 'expense',
+    'Groceries': 'expense',
+    'Investments': 'expense',
+    'Retirement Account': 'expense'
+  };
+
+  for (const [name, type] of Object.entries(categoryTypes)) {
+    try {
+      const { data, error } = await supabase
+        .from('transaction_categories')
+        .update({ type })
+        .eq('user_id', userId)
+        .eq('name', name);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error(`Error updating type for category ${name}:`, error);
+    }
+  }
+}
+
+export interface Budget {
+  id: number;
+  user_id: string;
+  category_id: number;
+  month: string;
+  assigned: number;
+  actual: number;  
+}
+
+export async function fetchBudget(userId: string, month: string): Promise<Budget[]> {
+  try {
+    const startDate = `${month}-01`;
+    const endDate = new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0];
+
+    const { data: budgets, error: budgetError } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('month', startDate)
+      .lt('month', endDate);
+
+    if (budgetError) throw budgetError;
+
+    const { data: transactions, error: transactionError } = await supabase
+      .from('transactions')
+      .select('category_id, amount, type')
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lt('date', endDate);
+
+    if (transactionError) throw transactionError;
+
+    const actualSpending = transactions.reduce((acc, transaction) => {
+      const amount = transaction.type === 'expense' ? transaction.amount : -transaction.amount;
+      acc[transaction.category_id] = (acc[transaction.category_id] || 0) + amount;
+      return acc;
+    }, {} as Record<number, number>);
+
+    return budgets.map(budget => ({
+      ...budget,
+      actual: actualSpending[budget.category_id] || 0,
+      assigned: budget.assigned || 0
+    }));
+  } catch (error) {
+    console.error('Error fetching budget:', error);
+    toast.error('Failed to fetch budget. Please try again.');
+    return [];
+  }
+}
+
+export async function updateBudget(budget: Omit<Budget, 'id'>): Promise<Budget | null> {
+  try {
+    const { data, error } = await supabase
+      .from('budgets')
+      .upsert({
+        user_id: budget.user_id,
+        category_id: budget.category_id,
+        month: `${budget.month}-01`,
+        assigned: budget.assigned,
+        actual: budget.actual  // Make sure to include this
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    toast.success('Budget updated successfully!');
+    return data;
+  } catch (error) {
+    console.error('Error updating budget:', error);
+    toast.error('Failed to update budget. Please try again.');
+    return null;
+  }
+}
+
+export async function fetchBudgetSummary(userId: string, month: string): Promise<{ income: number; expenses: number; }> {
+  try {
+    const startDate = `${month}-01`;
+    const endDate = new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0];
+
+    const { data: transactions, error: transactionError } = await supabase
+      .from('transactions')
+      .select('amount, category_id')
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lt('date', endDate);
+
+    if (transactionError) throw transactionError;
+
+    const { data: categories, error: categoryError } = await supabase
+      .from('transaction_categories')
+      .select('id, type');
+
+    if (categoryError) throw categoryError;
+
+    const categoryTypes = Object.fromEntries(categories.map(c => [c.id, c.type]));
+
+    const summary = transactions.reduce((acc, transaction) => {
+      const type = categoryTypes[transaction.category_id];
+      if (type === 'income') {
+        acc.income += transaction.amount;
+      } else {
+        acc.expenses += transaction.amount;
+      }
+      return acc;
+    }, { income: 0, expenses: 0 });
+
+    return summary;
+  } catch (error) {
+    console.error('Error fetching budget summary:', error);
+    toast.error('Failed to fetch budget summary. Please try again.');
+    return { income: 0, expenses: 0 };
   }
 }
