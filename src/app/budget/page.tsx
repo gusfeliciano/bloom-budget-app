@@ -21,7 +21,8 @@ import {
   addDefaultCategories,
   fetchTransactions,
   fetchReadyToAssign,
-  updateReadyToAssign
+  updateReadyToAssign,
+  calculateAndUpdateReadyToAssign 
 } from '@/lib/api';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { debounce } from 'lodash';
@@ -47,6 +48,7 @@ export default function BudgetPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const [summary, setSummary] = useState({ income: 0, expenses: 0 });
   const [openAccordions, setOpenAccordions] = useLocalStorage<string[]>('openAccordions', []);
+  
 
   useEffect(() => {
     if (user) {
@@ -54,9 +56,23 @@ export default function BudgetPage() {
         await addDefaultCategories(user.id);
         await loadBudget();
         await loadSummary();
+        await loadReadyToAssign();
       })();
     }
   }, [user, currentMonth]);
+
+  const loadReadyToAssign = async () => {
+    if (user) {
+      try {
+        const amount = await calculateAndUpdateReadyToAssign(user.id, currentMonth);
+        console.log('Loaded Ready to Assign:', amount);
+        setReadyToAssign(amount);
+      } catch (error) {
+        console.error('Error loading Ready to Assign:', error);
+        toast.error('Failed to load Ready to Assign amount');
+      }
+    }
+  };
 
   const loadBudget = async () => {
     setIsLoading(true);
@@ -147,7 +163,7 @@ export default function BudgetPage() {
       );
   
       // Update Ready to Assign
-      const newReadyToAssign = await updateReadyToAssign(user!.id, currentMonth);
+      const newReadyToAssign = await fetchReadyToAssign(user!.id, currentMonth);
       setReadyToAssign(newReadyToAssign);
   
       toast.success('Budget updated successfully');
