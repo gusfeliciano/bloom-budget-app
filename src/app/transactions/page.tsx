@@ -63,11 +63,24 @@ export default function TransactionsPage() {
     if (!user) return;
     try {
       const fetchedCategories = await fetchCategories(user.id);
-      setCategories(fetchedCategories);
+      // Flatten the category hierarchy
+      const flatCategories = flattenCategories(fetchedCategories);
+      setCategories(flatCategories);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
     }
   }
+
+    // Helper function to flatten the category hierarchy
+    function flattenCategories(categories: TransactionCategory[]): TransactionCategory[] {
+      return categories.reduce((acc, category) => {
+        acc.push(category);
+        if (category.children) {
+          acc.push(...flattenCategories(category.children));
+        }
+        return acc;
+      }, [] as TransactionCategory[]);
+    }
 
   const handleTransactionAdded = () => {
     loadTransactions();
@@ -94,18 +107,18 @@ export default function TransactionsPage() {
       </div>
       {isAddingTransaction && (
         <Card>
-          <CardHeader>
-            <CardTitle>Add New Transaction</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AddTransactionForm 
-              onTransactionAdded={handleTransactionAdded} 
-              accounts={accounts} 
-              categories={categories}
-              onCancel={() => setIsAddingTransaction(false)}
-            />
-          </CardContent>
-        </Card>
+        <CardHeader>
+          <CardTitle>Add New Transaction</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AddTransactionForm 
+            onTransactionAdded={handleTransactionAdded} 
+            accounts={accounts} 
+            categories={categories}
+            onCancel={() => setIsAddingTransaction(false)}
+          />
+        </CardContent>
+      </Card>
       )}
       <Card>
         <CardHeader>

@@ -131,10 +131,17 @@ export async function fetchTransactions(
   pageSize: number = 10
 ): Promise<{ transactions: Transaction[], total: number }> {
   try {
+    const startDate = new Date();
+    startDate.setDate(1); // First day of current month
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1); // First day of next month
+
     const { data, error, count } = await supabase
       .from('transactions')
       .select('*', { count: 'exact' })
       .eq('user_id', userId)
+      .gte('date', startDate.toISOString())
+      .lt('date', endDate.toISOString())
       .order('date', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -269,6 +276,7 @@ function buildCategoryHierarchy(categories: TransactionCategory[]): TransactionC
 
   return rootCategories;
 }
+
 export async function createCategory(
   userId: string, 
   name: string, 

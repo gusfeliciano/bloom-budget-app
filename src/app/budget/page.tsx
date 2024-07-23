@@ -18,12 +18,15 @@ import {
   updateBudget, 
   Budget, 
   fetchBudgetSummary, 
-  addDefaultCategories 
+  addDefaultCategories,
+  fetchTransactions 
 } from '@/lib/api';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { debounce } from 'lodash';
 
 interface BudgetCategory extends TransactionCategory {
   budget: number;
-  actual: number;
+  activity: number;
   remaining: number;
 }
 
@@ -39,6 +42,7 @@ export default function BudgetPage() {
   const [readyToAssign, setReadyToAssign] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const [summary, setSummary] = useState({ income: 0, expenses: 0 });
+  const [openAccordions, setOpenAccordions] = useLocalStorage<string[]>('openAccordions', []);
 
   useEffect(() => {
     if (user) {
@@ -55,32 +59,42 @@ export default function BudgetPage() {
     try {
       const categories = await fetchCategories(user!.id);
       const budgetData = await fetchBudget(user!.id, currentMonth);
-      
+      const transactions = await fetchTransactions(user!.id, 1, 1000); // Fetch all transactions for the month
+
       const budgetByCategory = new Map(budgetData.map(b => [b.category_id, b]));
-  
+      const activityByCategory = new Map();
+
+      // Calculate activity for each category
+      transactions.transactions.forEach(transaction => {
+        const categoryId = transaction.category_id;
+        const amount = transaction.amount;
+        activityByCategory.set(categoryId, (activityByCategory.get(categoryId) || 0) + amount);
+      });
+
       const formattedBudget: ParentCategory[] = categories.map(parent => {
         const children = (parent.children || []).map(child => {
-          const budgetEntry = budgetByCategory.get(child.id) || { assigned: 0, actual: 0 };
+          const budgetEntry = budgetByCategory.get(child.id) || { assigned: 0, activity: 0 };
+          const activity = activityByCategory.get(child.id) || 0;
           return {
             ...child,
             budget: budgetEntry.assigned,
-            actual: budgetEntry.actual,
-            remaining: budgetEntry.assigned - budgetEntry.actual
+            activity: activity,
+            remaining: budgetEntry.assigned - activity
           } as BudgetCategory;
         });
-  
+
         const parentBudget = children.reduce((sum, child) => sum + child.budget, 0);
-        const parentActual = children.reduce((sum, child) => sum + child.actual, 0);
-  
+        const parentActivity = children.reduce((sum, child) => sum + child.activity, 0);
+
         return {
           ...parent,
           budget: parentBudget,
-          actual: parentActual,
-          remaining: parentBudget - parentActual,
+          activity: parentActivity,
+          remaining: parentBudget - parentActivity,
           children
         } as ParentCategory;
       });
-  
+
       setBudget(formattedBudget);
     } catch (error) {
       console.error('Failed to load budget:', error);
@@ -99,31 +113,36 @@ export default function BudgetPage() {
     }
   };
 
-  const handleBudgetChange = async (parentId: number, childId: number, value: number) => {
+  const debouncedUpdateBudget = debounce(async (budgetEntry: Budget) => {
+    await updateBudget(budgetEntry);
+    loadBudget(); // Reload the budget after updating
+  }, 1000);
+
+  const handleBudgetChange = (parentId: number, childId: number, value: number) => {
     const updatedBudget = budget.map(parent => {
       if (parent.id === parentId) {
         const updatedChildren = parent.children.map(child => 
           child.id === childId 
-            ? { ...child, budget: value, remaining: value - child.actual }
+            ? { ...child, budget: value, remaining: value - child.activity }
             : child
         );
         return {
           ...parent,
           children: updatedChildren,
           budget: updatedChildren.reduce((sum, child) => sum + child.budget, 0),
-          actual: updatedChildren.reduce((sum, child) => sum + child.actual, 0),
+          activity: updatedChildren.reduce((sum, child) => sum + child.activity, 0),
           remaining: updatedChildren.reduce((sum, child) => sum + child.remaining, 0)
         };
       }
       return parent;
     });
-  
+
     setBudget(updatedBudget);
-  
+
     const updatedChild = updatedBudget
       .find(parent => parent.id === parentId)
       ?.children.find(child => child.id === childId);
-  
+
     if (updatedChild) {
       const budgetEntry: Budget = {
         id: 0,
@@ -131,29 +150,29 @@ export default function BudgetPage() {
         category_id: childId,
         month: currentMonth,
         assigned: value,
-        actual: updatedChild.actual
+        actual: updatedChild.activity
       };
-      await updateBudget(budgetEntry);
+      debouncedUpdateBudget(budgetEntry);
     }
   };
 
   const renderCategoryGroup = (category: ParentCategory) => (
     <AccordionItem key={category.id} value={category.id.toString()} className="no-underline">
-    <AccordionTrigger className="accordion-trigger">
-      <div className="flex items-center justify-between w-full">
-        <span>{category.name}</span>
-        <Badge variant={category.type === 'income' ? 'success' : 'destructive'}>
-          {category.type}
-        </Badge>
-      </div>
-    </AccordionTrigger>
+      <AccordionTrigger className="accordion-trigger">
+        <div className="flex items-center justify-between w-full">
+          <span>{category.name}</span>
+          <Badge variant={category.type === 'income' ? 'success' : 'destructive'}>
+            {category.type}
+          </Badge>
+        </div>
+      </AccordionTrigger>
       <AccordionContent>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[200px]">Category</TableHead>
               <TableHead>Budget</TableHead>
-              <TableHead>Actual</TableHead>
+              <TableHead>Activity</TableHead>
               <TableHead>Remaining</TableHead>
             </TableRow>
           </TableHeader>
@@ -173,17 +192,17 @@ export default function BudgetPage() {
                     <span className="absolute left-2 top-1/2 transform -translate-y-1/2">$</span>
                   </div>
                 </TableCell>
-                <TableCell>${(childCategory.actual || 0).toFixed(2)}</TableCell>
+                <TableCell>${(childCategory.activity || 0).toFixed(2)}</TableCell>
                 <TableCell>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger>
-                        <span className={((childCategory.budget || 0) - (childCategory.actual || 0)) >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          ${((childCategory.budget || 0) - (childCategory.actual || 0)).toFixed(2)}
+                        <span className={childCategory.remaining >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          ${childCategory.remaining.toFixed(2)}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {((childCategory.budget || 0) - (childCategory.actual || 0)) >= 0 ? 'Under budget' : 'Over budget'}
+                        {childCategory.remaining >= 0 ? 'Under budget' : 'Over budget'}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -207,7 +226,12 @@ export default function BudgetPage() {
       </div>
       <div className="flex justify-between">
         <div className="w-3/4 pr-6">
-          <Accordion type="multiple" className="w-full">
+          <Accordion 
+            type="multiple" 
+            className="w-full" 
+            value={openAccordions}
+            onValueChange={setOpenAccordions}
+          >
             {budget.map((category) => renderCategoryGroup(category))}
           </Accordion>
         </div>
