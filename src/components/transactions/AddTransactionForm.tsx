@@ -27,6 +27,7 @@ export default function AddTransactionForm({ onTransactionAdded, onCancel, accou
   const [accountId, setAccountId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
+  const childCategories = categories.filter(category => category.parent_id !== null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,13 +84,13 @@ export default function AddTransactionForm({ onTransactionAdded, onCancel, accou
       </div>
       <div>
         <Label htmlFor="category">Category</Label>
-        {categories.length > 0 ? (
+        {childCategories.length > 0 ? (
           <Select onValueChange={setCategoryId} value={categoryId}>
             <SelectTrigger>
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((category) => (
+              {childCategories.map((category) => (
                 <SelectItem key={category.id} value={category.id.toString()}>
                   {category.name}
                 </SelectItem>

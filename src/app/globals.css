@@ -76,3 +76,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+.no-underline .accordion-trigger {
+  text-decoration: none !important;
+}
+
+.no-underline .accordion-trigger:hover {
+  text-decoration: none !important;
+}

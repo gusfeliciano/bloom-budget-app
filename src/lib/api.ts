@@ -121,7 +121,8 @@ export interface TransactionCategory {
   user_id: string;
   parent_id: number | null;
   type: 'income' | 'expense';
-  isParent?: boolean; 
+  isParent?: boolean;
+  children: TransactionCategory[]; 
 }
 
 export async function fetchTransactions(
@@ -220,31 +221,25 @@ export async function fetchCategories(userId: string): Promise<TransactionCatego
       .from('transaction_categories')
       .select('*')
       .eq('user_id', userId)
+      .order('parent_id', { nullsFirst: true })
       .order('name');
 
     if (error) throw error;
 
     if (data && data.length > 0) {
-      return data.map(category => ({
-        ...category,
-        isParent: category.parent_id === null
-      }));
+      return buildCategoryHierarchy(data);
     } else {
-      // If no categories found, trigger the addition of default categories
       await addDefaultCategories(userId);
-      // Fetch categories again after adding defaults
       const { data: newData, error: newError } = await supabase
         .from('transaction_categories')
         .select('*')
         .eq('user_id', userId)
+        .order('parent_id', { nullsFirst: true })
         .order('name');
 
       if (newError) throw newError;
 
-      return newData?.map(category => ({
-        ...category,
-        isParent: category.parent_id === null
-      })) || [];
+      return buildCategoryHierarchy(newData || []);
     }
   } catch (error) {
     console.error('Error fetching categories:', error);
@@ -253,10 +248,32 @@ export async function fetchCategories(userId: string): Promise<TransactionCatego
   }
 }
 
+function buildCategoryHierarchy(categories: TransactionCategory[]): TransactionCategory[] {
+  const categoryMap = new Map<number, TransactionCategory>();
+  const rootCategories: TransactionCategory[] = [];
+
+  categories.forEach(category => {
+    categoryMap.set(category.id, { ...category, children: [] });
+  });
+
+  categories.forEach(category => {
+    if (category.parent_id === null) {
+      rootCategories.push(categoryMap.get(category.id)!);
+    } else {
+      const parentCategory = categoryMap.get(category.parent_id);
+      if (parentCategory) {
+        parentCategory.children.push(categoryMap.get(category.id)!);
+      }
+    }
+  });
+
+  return rootCategories;
+}
 export async function createCategory(
   userId: string, 
   name: string, 
-  parentId: number | null = null
+  parentId: number | null = null,
+  type: 'income' | 'expense'
 ): Promise<TransactionCategory | null> {
   try {
     let parent_id = parentId;
@@ -275,7 +292,7 @@ export async function createCategory(
       }
     }
 
-    const newCategory = { user_id: userId, name, parent_id };
+    const newCategory = { user_id: userId, name, parent_id, type };
     console.log('Creating category:', newCategory);
 
     const { data, error } = await supabase
@@ -337,56 +354,89 @@ export async function deleteCategory(id: number): Promise<void> {
 
 export async function addDefaultCategories(userId: string): Promise<void> {
   const defaultCategories = [
-    { name: 'Income', parent_id: null },
-    { name: 'Salary', parent_name: 'Income' },
-    { name: 'Expenses', parent_id: null },
-    { name: 'Groceries', parent_name: 'Expenses' },
-    { name: 'Investments', parent_id: null },
-    { name: 'Retirement Account', parent_name: 'Investments' },
+    { name: 'Income', type: 'income', parent_id: null },
+    { name: 'Auto & Transport', type: 'expense', parent_id: null },
+    { name: 'Bills & Utilities', type: 'expense', parent_id: null },
+  ];
+
+  const childCategories = [
+    { name: '💵 Paychecks', type: 'income', parent_name: 'Income' },
+    { name: '💸 Interest', type: 'income', parent_name: 'Income' },
+    { name: '💰 Business Income', type: 'income', parent_name: 'Income' },
+    { name: '💰 Other Income', type: 'income', parent_name: 'Income' },
+    { name: '🚃 Public Transit', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '🚗 Auto Payment', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '⛽️ Gas', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '🔧 Auto Maintenance', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '🏢 Parking & Tolls', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '🚕 Taxi & Ride Shares', type: 'expense', parent_name: 'Auto & Transport' },
+    { name: '🗑️ Garbage', type: 'expense', parent_name: 'Bills & Utilities' },
+    { name: '💧 Water', type: 'expense', parent_name: 'Bills & Utilities' },
+    { name: '⚡️ Gas & Electric', type: 'expense', parent_name: 'Bills & Utilities' },
+    { name: '🌐 Internet & Cable', type: 'expense', parent_name: 'Bills & Utilities' },
+    { name: '📱 Phone', type: 'expense', parent_name: 'Bills & Utilities' },
   ];
 
   try {
-    // Use the existing RPC function
-    const { data, error } = await supabase.rpc('add_default_categories', {
-      p_user_id: userId,
-      p_categories: defaultCategories
-    });
+    // First, fetch existing categories
+    const { data: existingCategories, error: fetchError } = await supabase
+      .from('transaction_categories')
+      .select('name, id')
+      .eq('user_id', userId);
 
-    if (error) throw error;
+    if (fetchError) throw fetchError;
 
-    console.log('Default categories added successfully:', data);
+    const existingCategoryMap = new Map(existingCategories.map(cat => [cat.name, cat.id]));
 
-    // After adding default categories, update their types
-    await updateCategoryTypes(userId);
+    // Upsert parent categories
+    const parentUpsertData = defaultCategories.map(cat => ({
+      ...cat,
+      user_id: userId,
+      id: existingCategoryMap.get(cat.name) // Use existing ID if category exists
+    }));
+
+    const { data: parentData, error: parentError } = await supabase
+      .from('transaction_categories')
+      .upsert(parentUpsertData)
+      .select();
+
+    if (parentError) throw parentError;
+
+    // Create a map of parent names to their IDs
+    const parentMap = new Map(parentData.map(cat => [cat.name, cat.id]));
+
+    // Upsert child categories
+    const childUpsertData = childCategories.map(cat => ({
+      name: cat.name,
+      type: cat.type,
+      user_id: userId,
+      parent_id: parentMap.get(cat.parent_name),
+      id: existingCategoryMap.get(cat.name) // Use existing ID if category exists
+    }));
+
+    const { error: childError } = await supabase
+      .from('transaction_categories')
+      .upsert(childUpsertData);
+
+    if (childError) throw childError;
+
+    console.log('Default categories added or updated successfully');
   } catch (error) {
     console.error('Error in addDefaultCategories:', error);
     toast.error('Failed to add default categories. Please try again or contact support.');
   }
 }
 
-async function updateCategoryTypes(userId: string): Promise<void> {
-  const categoryTypes = {
-    'Income': 'income',
-    'Salary': 'income',
-    'Expenses': 'expense',
-    'Groceries': 'expense',
-    'Investments': 'expense',
-    'Retirement Account': 'expense'
-  };
-
-  for (const [name, type] of Object.entries(categoryTypes)) {
-    try {
-      const { data, error } = await supabase
-        .from('transaction_categories')
-        .update({ type })
-        .eq('user_id', userId)
-        .eq('name', name);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error(`Error updating type for category ${name}:`, error);
+function flattenCategories(categories: any[], parentId: number | null = null): any[] {
+  return categories.reduce((acc, category) => {
+    const { children, ...categoryWithoutChildren } = category;
+    const flatCategory = { ...categoryWithoutChildren, parent_id: parentId };
+    acc.push(flatCategory);
+    if (children) {
+      acc.push(...flattenCategories(children, category.id));
     }
-  }
+    return acc;
+  }, []);
 }
 
 export interface Budget {
@@ -421,17 +471,32 @@ export async function fetchBudget(userId: string, month: string): Promise<Budget
 
     if (transactionError) throw transactionError;
 
+    const { data: categories, error: categoryError } = await supabase
+      .from('transaction_categories')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (categoryError) throw categoryError;
+
+    const categoryMap = new Map(categories.map(c => [c.id, c]));
+
     const actualSpending = transactions.reduce((acc, transaction) => {
-      const amount = transaction.type === 'expense' ? transaction.amount : -transaction.amount;
-      acc[transaction.category_id] = (acc[transaction.category_id] || 0) + amount;
+      const category = categoryMap.get(transaction.category_id);
+      if (category && category.type === 'expense') {
+        acc[transaction.category_id] = (acc[transaction.category_id] || 0) + transaction.amount;
+      }
       return acc;
     }, {} as Record<number, number>);
 
-    return budgets.map(budget => ({
-      ...budget,
-      actual: actualSpending[budget.category_id] || 0,
-      assigned: budget.assigned || 0
-    }));
+    return budgets.map(budget => {
+      const category = categoryMap.get(budget.category_id);
+      return {
+        ...budget,
+        actual: actualSpending[budget.category_id] || 0,
+        assigned: budget.assigned || 0,
+        type: category ? category.type : 'expense'
+      };
+    });
   } catch (error) {
     console.error('Error fetching budget:', error);
     toast.error('Failed to fetch budget. Please try again.');

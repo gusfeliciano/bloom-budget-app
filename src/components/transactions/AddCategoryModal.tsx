@@ -30,6 +30,7 @@ export default function AddCategoryModal({
 }: AddCategoryModalProps) {
   const [categoryName, setCategoryName] = useState('');
   const [parentId, setParentId] = useState<string>('none');
+  const [categoryType, setCategoryType] = useState<'income' | 'expense'>('expense');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,11 +40,12 @@ export default function AddCategoryModal({
     }
 
     try {
-      await createCategory(userId, categoryName, parentId === 'none' ? null : parseInt(parentId));
+      await createCategory(userId, categoryName, parentId === 'none' ? null : parseInt(parentId), categoryType);
       toast.success('Category added successfully');
       onCategoryAdded();
       setCategoryName('');
       setParentId('none');
+      setCategoryType('expense');
       onClose();
     } catch (error) {
       console.error('Failed to add category:', error);
@@ -51,7 +53,7 @@ export default function AddCategoryModal({
     }
   };
 
-  const parentCategories = categories.filter(c => c.type === 'expense');
+  const parentCategories = categories;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -59,8 +61,8 @@ export default function AddCategoryModal({
         <DialogHeader>
           <DialogTitle>Add New Category</DialogTitle>
           <DialogDescription>
-          Create a new category for organizing your transactions.
-        </DialogDescription>
+            Create a new category for organizing your transactions.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
@@ -80,6 +82,15 @@ export default function AddCategoryModal({
                   {category.name}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select onValueChange={(value) => setCategoryType(value as 'income' | 'expense')} value={categoryType}>
+            <SelectTrigger>
+              <SelectValue placeholder="Category Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="income">Income</SelectItem>
+              <SelectItem value="expense">Expense</SelectItem>
             </SelectContent>
           </Select>
           <Button type="submit">Add Category</Button>

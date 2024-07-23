@@ -2,13 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
-import { fetchCategories, TransactionCategory, fetchBudget, updateBudget, Budget, fetchBudgetSummary } from '@/lib/api';
+import { 
+  fetchCategories, 
+  TransactionCategory, 
+  fetchBudget, 
+  updateBudget, 
+  Budget, 
+  fetchBudgetSummary, 
+  addDefaultCategories 
+} from '@/lib/api';
 
 interface BudgetCategory extends TransactionCategory {
   budget: number;
@@ -16,15 +27,8 @@ interface BudgetCategory extends TransactionCategory {
   remaining: number;
 }
 
-interface ParentCategory {
-  id: number;
-  name: string;
-  type: 'income' | 'expense';
+interface ParentCategory extends Omit<BudgetCategory, 'parent_id'> {
   children: BudgetCategory[];
-  isCollapsed: boolean;
-  budget: number;
-  actual: number;
-  remaining: number;
 }
 
 export default function BudgetPage() {
@@ -38,8 +42,11 @@ export default function BudgetPage() {
 
   useEffect(() => {
     if (user) {
-      loadBudget();
-      loadSummary();
+      (async () => {
+        await addDefaultCategories(user.id);
+        await loadBudget();
+        await loadSummary();
+      })();
     }
   }, [user, currentMonth]);
 
@@ -49,33 +56,29 @@ export default function BudgetPage() {
       const categories = await fetchCategories(user!.id);
       const budgetData = await fetchBudget(user!.id, currentMonth);
       
-      const parentCategories = categories.filter(c => c.parent_id === null);
       const budgetByCategory = new Map(budgetData.map(b => [b.category_id, b]));
   
-      const formattedBudget = parentCategories.map(parent => {
-        const children = categories
-          .filter(c => c.parent_id === parent.id)
-          .map(child => {
-            const budgetEntry = budgetByCategory.get(child.id) || { assigned: 0, actual: 0 };
-            return {
-              ...child,
-              budget: budgetEntry.assigned,
-              actual: budgetEntry.actual,
-              remaining: budgetEntry.assigned - budgetEntry.actual
-            };
-          });
+      const formattedBudget: ParentCategory[] = categories.map(parent => {
+        const children = (parent.children || []).map(child => {
+          const budgetEntry = budgetByCategory.get(child.id) || { assigned: 0, actual: 0 };
+          return {
+            ...child,
+            budget: budgetEntry.assigned,
+            actual: budgetEntry.actual,
+            remaining: budgetEntry.assigned - budgetEntry.actual
+          } as BudgetCategory;
+        });
   
         const parentBudget = children.reduce((sum, child) => sum + child.budget, 0);
         const parentActual = children.reduce((sum, child) => sum + child.actual, 0);
   
         return {
           ...parent,
-          isCollapsed: false,
           budget: parentBudget,
           actual: parentActual,
           remaining: parentBudget - parentActual,
           children
-        };
+        } as ParentCategory;
       });
   
       setBudget(formattedBudget);
@@ -117,33 +120,81 @@ export default function BudgetPage() {
   
     setBudget(updatedBudget);
   
-    // Find the updated child category
     const updatedChild = updatedBudget
       .find(parent => parent.id === parentId)
       ?.children.find(child => child.id === childId);
   
     if (updatedChild) {
-      // Update the budget in the database
       const budgetEntry: Budget = {
-        id: 0, // This will be ignored for insert, and used for update if it exists
+        id: 0,
         user_id: user!.id,
         category_id: childId,
         month: currentMonth,
         assigned: value,
-        actual: updatedChild.actual // Include the actual spending
+        actual: updatedChild.actual
       };
       await updateBudget(budgetEntry);
     }
   };
-  const toggleCollapse = (parentId: number) => {
-    setBudget(prevBudget => 
-      prevBudget.map(parent => 
-        parent.id === parentId 
-          ? { ...parent, isCollapsed: !parent.isCollapsed }
-          : parent
-      )
-    );
-  };
+
+  const renderCategoryGroup = (category: ParentCategory) => (
+    <AccordionItem key={category.id} value={category.id.toString()} className="no-underline">
+    <AccordionTrigger className="accordion-trigger">
+      <div className="flex items-center justify-between w-full">
+        <span>{category.name}</span>
+        <Badge variant={category.type === 'income' ? 'success' : 'destructive'}>
+          {category.type}
+        </Badge>
+      </div>
+    </AccordionTrigger>
+      <AccordionContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[200px]">Category</TableHead>
+              <TableHead>Budget</TableHead>
+              <TableHead>Actual</TableHead>
+              <TableHead>Remaining</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {category.children.map((childCategory) => (
+              <TableRow key={childCategory.id}>
+                <TableCell>{childCategory.name}</TableCell>
+                <TableCell>
+                  <div className="relative w-24">
+                    <Input 
+                      type="number" 
+                      value={childCategory.budget || 0} 
+                      onChange={(e) => handleBudgetChange(category.id, childCategory.id, Number(e.target.value))}
+                      className="pl-6 py-1"
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2">$</span>
+                  </div>
+                </TableCell>
+                <TableCell>${(childCategory.actual || 0).toFixed(2)}</TableCell>
+                <TableCell>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <span className={((childCategory.budget || 0) - (childCategory.actual || 0)) >= 0 ? 'text-green-600' : 'text-red-600'}>
+                          ${((childCategory.budget || 0) - (childCategory.actual || 0)).toFixed(2)}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {((childCategory.budget || 0) - (childCategory.actual || 0)) >= 0 ? 'Under budget' : 'Over budget'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </AccordionContent>
+    </AccordionItem>
+  );
 
   if (isLoading) {
     return <div>Loading...</div>;
@@ -156,58 +207,9 @@ export default function BudgetPage() {
       </div>
       <div className="flex justify-between">
         <div className="w-3/4 pr-6">
-          {budget.map((parentCategory) => (
-            <Card key={parentCategory.id} className="mb-4">
-              <CardHeader 
-                className="bg-gray-100 cursor-pointer" 
-                onClick={() => toggleCollapse(parentCategory.id)}
-              >
-                <div className="flex justify-between items-center">
-                  <CardTitle className="flex items-center">
-                    {parentCategory.isCollapsed ? <ChevronRight className="mr-2" /> : <ChevronDown className="mr-2" />}
-                    {parentCategory.name}
-                  </CardTitle>
-                </div>
-              </CardHeader>
-              {!parentCategory.isCollapsed && (
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">Category</TableHead>
-                        <TableHead>Budget</TableHead>
-                        <TableHead>Actual</TableHead>
-                        <TableHead>Remaining</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parentCategory.children.map((childCategory) => (
-                        <TableRow key={childCategory.id}>
-                          <TableCell>{childCategory.name}</TableCell>
-                          <TableCell>
-                            <div className="relative w-24">
-                              <Input 
-                                type="number" 
-                                value={childCategory.budget} 
-                                onChange={(e) => handleBudgetChange(parentCategory.id, childCategory.id, Number(e.target.value))}
-                                className="pl-6 py-1"
-                                onFocus={(e) => e.target.select()}
-                              />
-                              <span className="absolute left-2 top-1/2 transform -translate-y-1/2">$</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>${childCategory.actual.toFixed(2)}</TableCell>
-                          <TableCell className={childCategory.remaining >= 0 ? 'text-green-600' : 'text-red-600'}>
-                            ${childCategory.remaining.toFixed(2)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              )}
-            </Card>
-          ))}
+          <Accordion type="multiple" className="w-full">
+            {budget.map((category) => renderCategoryGroup(category))}
+          </Accordion>
         </div>
         <div className="w-1/4">
           <Card className="mb-4 bg-green-100">
@@ -233,16 +235,23 @@ export default function BudgetPage() {
           </Card>
         </div>
       </div>
-      <AddCategoryModal
-        isOpen={isAddingCategory}
-        onClose={() => setIsAddingCategory(false)}
-        onCategoryAdded={() => {
-          loadBudget();
-          setIsAddingCategory(false);
-        }}
-        categories={budget}
-        userId={user?.id}
-      />
+      <Dialog open={isAddingCategory} onOpenChange={setIsAddingCategory}>
+        <DialogTrigger asChild>
+          <Button>Add Category</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <AddCategoryModal
+            isOpen={isAddingCategory}
+            onClose={() => setIsAddingCategory(false)}
+            onCategoryAdded={() => {
+              loadBudget();
+              setIsAddingCategory(false);
+            }}
+            categories={budget}
+            userId={user?.id}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

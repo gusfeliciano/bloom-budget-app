@@ -21,7 +21,7 @@ export default function TransactionItem({
   const [isEditing, setIsEditing] = useState(false);
   const [editedTransaction, setEditedTransaction] = useState(transaction);
 
-  const childCategories = categories.filter(category => !category.isParent);
+  const childCategories = categories.filter(category => category.parent_id !== null);
 
   const handleEdit = () => {
     setIsEditing(true);
