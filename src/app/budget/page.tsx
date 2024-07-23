@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,14 @@ import {
   Budget, 
   fetchBudgetSummary, 
   addDefaultCategories,
-  fetchTransactions 
+  fetchTransactions,
+  fetchReadyToAssign,
+  updateReadyToAssign
 } from '@/lib/api';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { debounce } from 'lodash';
+import { toast } from 'react-hot-toast';
+
 
 interface BudgetCategory extends TransactionCategory {
   budget: number;
@@ -59,18 +63,18 @@ export default function BudgetPage() {
     try {
       const categories = await fetchCategories(user!.id);
       const budgetData = await fetchBudget(user!.id, currentMonth);
-      const transactions = await fetchTransactions(user!.id, 1, 1000); // Fetch all transactions for the month
-
+      const transactions = await fetchTransactions(user!.id, 1, 1000);
+      const readyToAssignAmount = await fetchReadyToAssign(user!.id, currentMonth);
+  
       const budgetByCategory = new Map(budgetData.map(b => [b.category_id, b]));
       const activityByCategory = new Map();
-
-      // Calculate activity for each category
+  
       transactions.transactions.forEach(transaction => {
         const categoryId = transaction.category_id;
         const amount = transaction.amount;
         activityByCategory.set(categoryId, (activityByCategory.get(categoryId) || 0) + amount);
       });
-
+  
       const formattedBudget: ParentCategory[] = categories.map(parent => {
         const children = (parent.children || []).map(child => {
           const budgetEntry = budgetByCategory.get(child.id) || { assigned: 0, activity: 0 };
@@ -82,10 +86,10 @@ export default function BudgetPage() {
             remaining: budgetEntry.assigned - activity
           } as BudgetCategory;
         });
-
+  
         const parentBudget = children.reduce((sum, child) => sum + child.budget, 0);
         const parentActivity = children.reduce((sum, child) => sum + child.activity, 0);
-
+  
         return {
           ...parent,
           budget: parentBudget,
@@ -94,8 +98,9 @@ export default function BudgetPage() {
           children
         } as ParentCategory;
       });
-
+  
       setBudget(formattedBudget);
+      setReadyToAssign(readyToAssignAmount);
     } catch (error) {
       console.error('Failed to load budget:', error);
     } finally {
@@ -113,10 +118,49 @@ export default function BudgetPage() {
     }
   };
 
-  const debouncedUpdateBudget = debounce(async (budgetEntry: Budget) => {
-    await updateBudget(budgetEntry);
-    loadBudget(); // Reload the budget after updating
-  }, 1000);
+  const updateBudgetEntry = useCallback(async (budgetEntry: Budget) => {
+    try {
+      const updatedBudget = await updateBudget(budgetEntry);
+      
+      // Update local state
+      setBudget(prevBudget => 
+        prevBudget.map(category => {
+          if (category.id === updatedBudget.category_id) {
+            return {
+              ...category,
+              budget: updatedBudget.assigned,
+              remaining: updatedBudget.assigned - category.activity
+            };
+          }
+          if (category.children) {
+            return {
+              ...category,
+              children: category.children.map(child => 
+                child.id === updatedBudget.category_id
+                  ? { ...child, budget: updatedBudget.assigned, remaining: updatedBudget.assigned - child.activity }
+                  : child
+              )
+            };
+          }
+          return category;
+        })
+      );
+  
+      // Update Ready to Assign
+      const newReadyToAssign = await updateReadyToAssign(user!.id, currentMonth);
+      setReadyToAssign(newReadyToAssign);
+  
+      toast.success('Budget updated successfully');
+    } catch (error) {
+      console.error('Error updating budget:', error);
+      toast.error('Failed to update budget. Please try again.');
+    }
+  }, [user, currentMonth]);
+
+  const debouncedUpdateBudget = useCallback(
+    debounce(updateBudgetEntry, 1000),
+    [updateBudgetEntry]
+  );
 
   const handleBudgetChange = (parentId: number, childId: number, value: number) => {
     const updatedBudget = budget.map(parent => {
@@ -156,6 +200,37 @@ export default function BudgetPage() {
     }
   };
 
+  const handleBudgetBlur = (parentId: number, childId: number, value: number) => {
+    debouncedUpdateBudget.cancel(); // Cancel any pending debounced updates
+    const updatedChild = budget
+      .find(parent => parent.id === parentId)
+      ?.children.find(child => child.id === childId);
+  
+    if (updatedChild) {
+      const budgetEntry: Budget = {
+        id: 0,
+        user_id: user!.id,
+        category_id: childId,
+        month: currentMonth,
+        assigned: value,
+        actual: updatedChild.activity
+      };
+      updateBudgetEntry(budgetEntry);
+    }
+  };
+
+  const handleBudgetKeyPress = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+    parentId: number,
+    childId: number,
+    value: number
+  ) => {
+    if (event.key === 'Enter') {
+      handleBudgetBlur(parentId, childId, value);
+      event.currentTarget.blur(); // This line will remove focus from the input field
+    }
+  };
+
   const renderCategoryGroup = (category: ParentCategory) => (
     <AccordionItem key={category.id} value={category.id.toString()} className="no-underline">
       <AccordionTrigger className="accordion-trigger">
@@ -181,11 +256,13 @@ export default function BudgetPage() {
               <TableRow key={childCategory.id}>
                 <TableCell>{childCategory.name}</TableCell>
                 <TableCell>
-                  <div className="relative w-24">
+                <div className="relative w-24">
                     <Input 
                       type="number" 
                       value={childCategory.budget || 0} 
                       onChange={(e) => handleBudgetChange(category.id, childCategory.id, Number(e.target.value))}
+                      onBlur={(e) => handleBudgetBlur(category.id, childCategory.id, Number(e.target.value))}
+                      onKeyPress={(e) => handleBudgetKeyPress(e, category.id, childCategory.id, Number(e.currentTarget.value))}
                       className="pl-6 py-1"
                       onFocus={(e) => e.target.select()}
                     />

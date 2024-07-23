@@ -512,7 +512,7 @@ export async function fetchBudget(userId: string, month: string): Promise<Budget
   }
 }
 
-export async function updateBudget(budget: Omit<Budget, 'id'>): Promise<Budget | null> {
+export async function updateBudget(budget: Omit<Budget, 'id'>): Promise<Budget> {
   try {
     const { data, error } = await supabase
       .from('budgets')
@@ -521,18 +521,18 @@ export async function updateBudget(budget: Omit<Budget, 'id'>): Promise<Budget |
         category_id: budget.category_id,
         month: `${budget.month}-01`,
         assigned: budget.assigned,
-        actual: budget.actual  // Make sure to include this
+        actual: budget.actual
+      }, {
+        onConflict: 'user_id,category_id,month'
       })
       .select()
       .single();
 
     if (error) throw error;
-    toast.success('Budget updated successfully!');
     return data;
   } catch (error) {
     console.error('Error updating budget:', error);
-    toast.error('Failed to update budget. Please try again.');
-    return null;
+    throw error;
   }
 }
 
@@ -573,5 +573,45 @@ export async function fetchBudgetSummary(userId: string, month: string): Promise
     console.error('Error fetching budget summary:', error);
     toast.error('Failed to fetch budget summary. Please try again.');
     return { income: 0, expenses: 0 };
+  }
+}
+
+export async function fetchReadyToAssign(userId: string, month: string): Promise<number> {
+  try {
+    const { income } = await fetchBudgetSummary(userId, month);
+    const { data: budgets, error } = await supabase
+      .from('budgets')
+      .select('assigned')
+      .eq('user_id', userId)
+      .eq('month', `${month}-01`);
+
+    if (error) throw error;
+
+    const totalAssigned = budgets.reduce((sum, budget) => sum + (budget.assigned || 0), 0);
+    return income - totalAssigned;
+  } catch (error) {
+    console.error('Error fetching ready to assign amount:', error);
+    return 0;
+  }
+}
+
+export async function updateReadyToAssign(userId: string, month: string): Promise<number> {
+  try {
+    const { income } = await fetchBudgetSummary(userId, month);
+    const { data: budgets, error } = await supabase
+      .from('budgets')
+      .select('assigned')
+      .eq('user_id', userId)
+      .eq('month', `${month}-01`);
+
+    if (error) throw error;
+
+    const totalAssigned = budgets.reduce((sum, budget) => sum + (budget.assigned || 0), 0);
+    const readyToAssign = income - totalAssigned;
+
+    return readyToAssign;
+  } catch (error) {
+    console.error('Error updating ready to assign amount:', error);
+    throw error;
   }
 }
