@@ -129,20 +129,19 @@ export interface TransactionCategory {
 export async function fetchTransactions(
   userId: string, 
   page: number = 1, 
-  pageSize: number = 10
+  pageSize: number = 10,
+  month: string
 ): Promise<{ transactions: Transaction[], total: number }> {
   try {
-    const startDate = new Date();
-    startDate.setDate(1); // First day of current month
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); // First day of next month
+    const startDate = `${month}-01`;
+    const endDate = new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0];
 
     const { data, error, count } = await supabase
       .from('transactions')
       .select('*', { count: 'exact' })
       .eq('user_id', userId)
-      .gte('date', startDate.toISOString())
-      .lt('date', endDate.toISOString())
+      .gte('date', startDate)
+      .lt('date', endDate)
       .order('date', { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -565,7 +564,6 @@ export async function updateBudget(budget: Omit<Budget, 'id'>): Promise<Budget> 
 
 export async function fetchBudgetSummary(userId: string, month: string): Promise<{ income: number; expenses: number; }> {
   try {
-    console.log('Fetching budget summary for', userId, 'and month', month);
     const startDate = `${month}-01`;
     const endDate = new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0];
 
@@ -578,31 +576,24 @@ export async function fetchBudgetSummary(userId: string, month: string): Promise
 
     if (transactionError) throw transactionError;
 
-    console.log('Fetched transactions:', transactions);
-
     const { data: categories, error: categoryError } = await supabase
       .from('transaction_categories')
       .select('id, type');
 
     if (categoryError) throw categoryError;
 
-    console.log('Fetched categories:', categories);
-
     const categoryTypes = Object.fromEntries(categories.map(c => [c.id, c.type]));
 
     const summary = transactions.reduce((acc, transaction) => {
-      console.log('Processing transaction:', transaction);
       const type = transaction.type;
       if (type === 'income' || categoryTypes[transaction.category_id] === 'income') {
         acc.income += transaction.amount;
       } else {
         acc.expenses += transaction.amount;
       }
-      console.log('Current accumulator:', acc);
       return acc;
     }, { income: 0, expenses: 0 });
 
-    console.log('Calculated summary:', summary);
     return summary;
   } catch (error) {
     console.error('Error fetching budget summary:', error);
@@ -652,8 +643,6 @@ export async function calculateAndUpdateReadyToAssign(userId: string, month: str
     console.error('Error fetching budgets:', budgetError);
     throw budgetError;
   }
-
-  console.log('Fetched budgets:', budgets);
 
   const totalAssigned = budgets.reduce((sum, budget) => sum + (budget.assigned || 0), 0);
   const readyToAssign = income - totalAssigned;

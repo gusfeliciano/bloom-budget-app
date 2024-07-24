@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
+import MonthPicker from '@/components/ui/MonthPicker';
 import { 
   fetchCategories, 
   TransactionCategory, 
@@ -21,13 +22,12 @@ import {
   addDefaultCategories,
   fetchTransactions,
   fetchReadyToAssign,
-  updateReadyToAssign,
   calculateAndUpdateReadyToAssign 
 } from '@/lib/api';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { debounce } from 'lodash';
 import { toast } from 'react-hot-toast';
-
+import { supabase } from '@/lib/supabase';
 
 interface BudgetCategory extends TransactionCategory {
   budget: number;
@@ -48,7 +48,7 @@ export default function BudgetPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const [summary, setSummary] = useState({ income: 0, expenses: 0 });
   const [openAccordions, setOpenAccordions] = useLocalStorage<string[]>('openAccordions', []);
-  
+  const [earliestMonth, setEarliestMonth] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -57,9 +57,58 @@ export default function BudgetPage() {
         await loadBudget();
         await loadSummary();
         await loadReadyToAssign();
+        await fetchEarliestMonth();
       })();
     }
   }, [user, currentMonth]);
+
+  const fetchEarliestMonth = async () => {
+    if (user) {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('date')
+          .eq('user_id', user.id)
+          .order('date', { ascending: true })
+          .limit(1);
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setEarliestMonth(data[0].date.slice(0, 7));
+        }
+      } catch (error) {
+        console.error('Error fetching earliest month:', error);
+      }
+    }
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(currentMonth + "-01");
+    if (direction === 'prev') {
+      date.setMonth(date.getMonth() - 1);
+    } else {
+      date.setMonth(date.getMonth() + 1);
+    }
+    const newMonth = date.toISOString().slice(0, 7);
+    
+    if (direction === 'prev' && earliestMonth && newMonth < earliestMonth) {
+      toast.error('No data available for earlier months');
+      return;
+    }
+    
+    setCurrentMonth(newMonth);
+  };
+
+  const jumpToMonth = (date: Date | undefined) => {
+    if (date) {
+      const newMonth = date.toISOString().slice(0, 7);
+      if (earliestMonth && newMonth < earliestMonth) {
+        toast.error('No data available for this month');
+        return;
+      }
+      setCurrentMonth(newMonth);
+    }
+  };
 
   const loadReadyToAssign = async () => {
     if (user) {
@@ -75,12 +124,13 @@ export default function BudgetPage() {
   };
 
   const loadBudget = async () => {
+    if (!user) return;
     setIsLoading(true);
     try {
-      const categories = await fetchCategories(user!.id);
-      const budgetData = await fetchBudget(user!.id, currentMonth);
-      const transactions = await fetchTransactions(user!.id, 1, 1000);
-      const readyToAssignAmount = await fetchReadyToAssign(user!.id, currentMonth);
+      const categories = await fetchCategories(user.id);
+      const budgetData = await fetchBudget(user.id, currentMonth);
+      const transactions = await fetchTransactions(user.id, 1, 1000, currentMonth);
+      const readyToAssignAmount = await fetchReadyToAssign(user.id, currentMonth);
   
       const budgetByCategory = new Map(budgetData.map(b => [b.category_id, b]));
       const activityByCategory = new Map();
@@ -124,9 +174,18 @@ export default function BudgetPage() {
     }
   };
 
+  const handleMonthChange = (newMonth: string) => {
+    if (earliestMonth && newMonth < earliestMonth) {
+      toast.error('No data available for earlier months');
+      return;
+    }
+    setCurrentMonth(newMonth);
+  };
+
   const loadSummary = async () => {
+    if (!user) return;
     try {
-      const summaryData = await fetchBudgetSummary(user!.id, currentMonth);
+      const summaryData = await fetchBudgetSummary(user.id, currentMonth);
       setSummary(summaryData);
       setReadyToAssign(summaryData.income - summaryData.expenses);
     } catch (error) {
@@ -163,8 +222,10 @@ export default function BudgetPage() {
       );
   
       // Update Ready to Assign
-      const newReadyToAssign = await fetchReadyToAssign(user!.id, currentMonth);
-      setReadyToAssign(newReadyToAssign);
+      if (user) {
+        const newReadyToAssign = await fetchReadyToAssign(user.id, currentMonth);
+        setReadyToAssign(newReadyToAssign);
+      }
   
       toast.success('Budget updated successfully');
     } catch (error) {
@@ -179,6 +240,7 @@ export default function BudgetPage() {
   );
 
   const handleBudgetChange = (parentId: number, childId: number, value: number) => {
+    if (!user) return;
     const updatedBudget = budget.map(parent => {
       if (parent.id === parentId) {
         const updatedChildren = parent.children.map(child => 
@@ -206,7 +268,7 @@ export default function BudgetPage() {
     if (updatedChild) {
       const budgetEntry: Budget = {
         id: 0,
-        user_id: user!.id,
+        user_id: user.id,
         category_id: childId,
         month: currentMonth,
         assigned: value,
@@ -217,6 +279,7 @@ export default function BudgetPage() {
   };
 
   const handleBudgetBlur = (parentId: number, childId: number, value: number) => {
+    if (!user) return;
     debouncedUpdateBudget.cancel(); // Cancel any pending debounced updates
     const updatedChild = budget
       .find(parent => parent.id === parentId)
@@ -225,7 +288,7 @@ export default function BudgetPage() {
     if (updatedChild) {
       const budgetEntry: Budget = {
         id: 0,
-        user_id: user!.id,
+        user_id: user.id,
         category_id: childId,
         month: currentMonth,
         assigned: value,
@@ -315,7 +378,8 @@ export default function BudgetPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">{new Date(currentMonth).toLocaleString('default', { month: 'long', year: 'numeric' })}</h1>
+        <h1 className="text-2xl font-bold">Budget</h1>
+        <MonthPicker value={currentMonth} onChange={handleMonthChange} />
       </div>
       <div className="flex justify-between">
         <div className="w-3/4 pr-6">

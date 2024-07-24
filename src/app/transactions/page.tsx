@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Account } from '@/types/accounts';
 import AddCategoryModal from '@/components/transactions/AddCategoryModal';
 import { toast } from 'react-hot-toast';
+import MonthPicker from '@/components/ui/MonthPicker';
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -21,6 +22,7 @@ export default function TransactionsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const { user } = useAuth();
 
   useEffect(() => {
@@ -33,17 +35,19 @@ export default function TransactionsPage() {
         toast.error('There was an issue setting up your account. Some features may be limited.');
       });
     }
-  }, [user, currentPage]);
+  }, [user, currentPage, currentMonth]);
+
 
   async function loadTransactions() {
     if (!user) return;
     setIsLoading(true);
     try {
-      const { transactions: fetchedTransactions, total } = await fetchTransactions(user.id, currentPage);
+      const { transactions: fetchedTransactions, total } = await fetchTransactions(user.id, currentPage, 10, currentMonth);
       setTransactions(fetchedTransactions);
-      setTotalPages(Math.ceil(total / 10)); // Assuming 10 items per page
+      setTotalPages(Math.ceil(total / 10));
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
+      toast.error('Failed to load transactions. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -87,6 +91,22 @@ export default function TransactionsPage() {
     setIsAddingTransaction(false);
   };
 
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const date = new Date(currentMonth + "-01");
+    if (direction === 'prev') {
+      date.setMonth(date.getMonth() - 1);
+    } else {
+      date.setMonth(date.getMonth() + 1);
+    }
+    setCurrentMonth(date.toISOString().slice(0, 7));
+    setCurrentPage(1); // Reset to first page when changing months
+  };
+
+  const handleMonthChange = (newMonth: string) => {
+    setCurrentMonth(newMonth);
+    setCurrentPage(1); // Reset to first page when changing months
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -104,6 +124,11 @@ export default function TransactionsPage() {
           <Button onClick={() => setIsAddingTransaction(true)}>Add Transaction</Button>
           <Button onClick={() => setIsAddingCategory(true)}>Add Category</Button>
         </div>
+      </div>
+      <div className="flex justify-center items-center space-x-4">
+      <div className="flex justify-center items-center space-x-4">
+        <MonthPicker value={currentMonth} onChange={handleMonthChange} />
+      </div>
       </div>
       {isAddingTransaction && (
         <Card>
