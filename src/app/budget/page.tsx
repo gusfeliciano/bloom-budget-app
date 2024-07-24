@@ -43,6 +43,7 @@ export default function BudgetPage() {
   const { user } = useAuth();
   const [budget, setBudget] = useState<ParentCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReadyToAssignLoading, setIsReadyToAssignLoading] = useState(true);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [readyToAssign, setReadyToAssign] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -112,13 +113,15 @@ export default function BudgetPage() {
 
   const loadReadyToAssign = async () => {
     if (user) {
+      setIsReadyToAssignLoading(true);
       try {
         const amount = await calculateAndUpdateReadyToAssign(user.id, currentMonth);
-        console.log('Loaded Ready to Assign:', amount);
         setReadyToAssign(amount);
       } catch (error) {
         console.error('Error loading Ready to Assign:', error);
         toast.error('Failed to load Ready to Assign amount');
+      } finally {
+        setIsReadyToAssignLoading(false);
       }
     }
   };
@@ -393,12 +396,16 @@ export default function BudgetPage() {
           </Accordion>
         </div>
         <div className="w-1/4">
-          <Card className="mb-4 bg-green-100">
-            <CardContent className="p-4">
-              <h2 className="font-semibold mb-2">Ready to Assign</h2>
+        <Card className="mb-4 bg-green-100">
+          <CardContent className="p-4">
+            <h2 className="font-semibold mb-2">Ready to Assign</h2>
+            {isReadyToAssignLoading ? (
+              <div className="text-3xl font-bold">Loading...</div>
+            ) : (
               <div className="text-3xl font-bold">${readyToAssign.toFixed(2)}</div>
-            </CardContent>
-          </Card>
+            )}
+          </CardContent>
+        </Card>
           <Card>
             <CardContent className="p-4">
               <h2 className="font-semibold mb-4">Summary</h2>
