@@ -8,9 +8,10 @@ import Sidebar from './Sidebar';
 
 interface AppContentProps {
   children: React.ReactNode;
+  className?: string;
 }
 
-export default function AppContent({ children }: AppContentProps) {
+export default function AppContent({ children, className }: AppContentProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -26,9 +27,11 @@ export default function AppContent({ children }: AppContentProps) {
   }, [user, loading, router, pathname]);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">
-      <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div>
-    </div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div>
+      </div>
+    );
   }
 
   if (!user && pathname !== '/auth') {
@@ -36,9 +39,9 @@ export default function AppContent({ children }: AppContentProps) {
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className={`flex h-screen bg-white ${className || ''}`}>
       {user && user.email_confirmed_at && <Sidebar />}
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main className="flex-1 overflow-hidden">
         {children}
       </main>
     </div>

@@ -1,6 +1,7 @@
 import { toast } from 'react-hot-toast';
 import { supabase } from './supabase';
 import { Account } from '@/types/accounts';
+import { Budget, BudgetData, TransactionCategory } from '@/types/budget';
 
 export async function fetchUserAccounts(userId: string): Promise<Account[]> {
   try {
@@ -114,16 +115,6 @@ export interface Transaction {
   type: 'income' | 'expense';
   created_at: string;
   updated_at: string;
-}
-
-export interface TransactionCategory {
-  id: number;
-  name: string;
-  user_id: string;
-  parent_id: number | null;
-  type: 'income' | 'expense';
-  isParent?: boolean;
-  children: TransactionCategory[]; 
 }
 
 export async function fetchTransactions(
@@ -348,13 +339,14 @@ export async function createCategory(
 
 export async function updateCategory(
   id: number,
-  updates: Partial<Omit<TransactionCategory, 'id' | 'user_id'>>
+  updates: Partial<Omit<TransactionCategory, 'id' | 'user_id' | 'children'>>
 ): Promise<TransactionCategory | null> {
   try {
     const { data, error } = await supabase
       .from('transaction_categories')
       .update(updates)
       .eq('id', id)
+      .select()
       .single();
 
     if (error) throw error;
@@ -375,10 +367,23 @@ export async function deleteCategory(id: number): Promise<void> {
       .eq('id', id);
 
     if (error) throw error;
-    toast.success('Category deleted successfully!');
   } catch (error) {
     console.error('Error deleting category:', error);
-    toast.error('Failed to delete category. Please try again.');
+    throw error;
+  }
+}
+
+export async function updateCategoryOrder(userId: string, categories: { id: number; order: number }[]): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('update_category_order', {
+      p_user_id: userId,
+      p_categories: categories
+    });
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error updating category order:', error);
+    throw error;
   }
 }
 
@@ -469,15 +474,6 @@ function flattenCategories(categories: any[], parentId: number | null = null): a
   }, []);
 }
 
-export interface Budget {
-  id: number;
-  user_id: string;
-  category_id: number;
-  month: string;
-  assigned: number;
-  actual: number;  
-}
-
 export async function fetchBudget(userId: string, month: string): Promise<Budget[]> {
   try {
     const startDate = `${month}-01`;
@@ -518,15 +514,15 @@ export async function fetchBudget(userId: string, month: string): Promise<Budget
       return acc;
     }, {} as Record<number, number>);
 
-    return budgets.map(budget => {
-      const category = categoryMap.get(budget.category_id);
-      return {
-        ...budget,
-        actual: actualSpending[budget.category_id] || 0,
-        assigned: budget.assigned || 0,
-        type: category ? category.type : 'expense'
-      };
-    });
+    return budgets.map(budget => ({
+      id: budget.id,
+      user_id: budget.user_id,
+      category_id: budget.category_id,
+      month: budget.month,
+      assigned: budget.assigned || 0,
+      actual: actualSpending[budget.category_id] || 0,
+      type: categoryMap.get(budget.category_id)?.type || 'expense'
+    }));
   } catch (error) {
     console.error('Error fetching budget:', error);
     toast.error('Failed to fetch budget. Please try again.');
